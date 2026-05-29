@@ -1,4 +1,5 @@
 from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats
+from .budget import TrainingBudget
 from .cnn import CNNSurrogate
 from .convergence import (
     ConvergenceAction,
@@ -25,6 +26,7 @@ __all__ = [
     "CorrectionPolicy",
     "AdaptiveCorrectionPolicy",
     "SurrogateStats",
+    "TrainingBudget",
     "CNNSurrogate",
     "ConvergenceAction",
     "ConvergenceConfig",

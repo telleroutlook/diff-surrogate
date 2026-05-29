@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from .base import SurrogateBase, CorrectionPolicy, SurrogateStats
+from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats
 from .cnn import CNNSurrogate
 from .mlp import MLPSurrogate
 
@@ -44,7 +44,13 @@ class EnsembleSurrogate(SurrogateBase):
         self._step += 1
         self.stats.total_predictions += 1
         with torch.no_grad():
-            return self.forward(x.to(self.device))
+            result = self.forward(x.to(self.device))
+        if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
+            std_vals = [v for k, v in result.items() if k.endswith("_std")]
+            if std_vals:
+                mean_std = torch.stack([s.mean() for s in std_vals]).mean().item()
+                self.correction_policy.update_uncertainty(mean_std)
+        return result
 
     def predict_with_uncertainty(self, x: torch.Tensor) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
         """Return (mean_predictions, uncertainty_estimates)."""

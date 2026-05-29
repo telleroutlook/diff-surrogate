@@ -47,6 +47,8 @@ class AdaptiveCorrectionPolicy:
     _current_interval: int = 0
     _error_ema: float | None = None
     _prev_error_ema: float | None = None
+    _uncertainty_baseline: float | None = None
+    _uncertainty_suppress_steps: int = 0
 
     def __post_init__(self):
         self._current_interval = self.initial_interval
@@ -73,6 +75,25 @@ class AdaptiveCorrectionPolicy:
     @property
     def current_interval(self) -> int:
         return self._current_interval
+
+    def update_uncertainty(self, avg_uncertainty: float):
+        """Adjust correction interval based on ensemble uncertainty.
+
+        If uncertainty exceeds ``growth_threshold`` times the baseline,
+        temporarily halve the correction interval.  Otherwise, gradually
+        restore the interval by incrementing it back up.
+        """
+        if self._uncertainty_baseline is None:
+            self._uncertainty_baseline = avg_uncertainty
+
+        if avg_uncertainty > self.growth_threshold * self._uncertainty_baseline:
+            self._current_interval = max(self.min_interval, self._current_interval // 2)
+            self._uncertainty_suppress_steps = 5
+        else:
+            if self._uncertainty_suppress_steps > 0:
+                self._uncertainty_suppress_steps -= 1
+            elif self._current_interval < self.initial_interval:
+                self._current_interval = min(self.max_interval, self._current_interval + 1)
 
 
 @dataclass
