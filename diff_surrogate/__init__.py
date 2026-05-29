@@ -1,6 +1,12 @@
 __version__ = "0.1.0"
 
-from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats, CorrectionAction
+from .base import (
+    AdaptiveCorrectionPolicy,
+    CorrectionAction,
+    CorrectionPolicy,
+    SurrogateBase,
+    SurrogateStats,
+)
 from .budget import TrainingBudget
 from .cnn import CNNSurrogate
 from .convergence import (

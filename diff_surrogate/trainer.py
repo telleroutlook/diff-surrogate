@@ -1,12 +1,14 @@
 """Training utilities for surrogates: data generation helpers and training loops."""
+
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 
-from .base import SurrogateBase
+from .base import SurrogateBase, _build_dataloader
+from .convergence import ConvergenceAction, ConvergenceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class SurrogateTrainer:
         loss_fn: Callable | None = None,
         scheduler: str | None = None,
         scheduler_kwargs: dict | None = None,
+        convergence_monitor: ConvergenceMonitor | None = None,
     ):
         self.surrogate = surrogate
         self.lr = lr
@@ -42,8 +45,15 @@ class SurrogateTrainer:
             )
         else:
             self.scheduler = None
+        self.convergence_monitor = convergence_monitor
 
-    def train(self, n_epochs: int = 10, n_samples: int = 256, batch_size: int = 32, grad_clip: float | None = None) -> list[float]:
+    def train(
+        self,
+        n_epochs: int = 10,
+        n_samples: int = 256,
+        batch_size: int = 32,
+        grad_clip: float | None = None,
+    ) -> list[float]:
         inputs, targets = self.surrogate.generate_training_data(n_samples)
         inputs = inputs.to(self.surrogate.device)
         if isinstance(targets, dict):
@@ -51,30 +61,28 @@ class SurrogateTrainer:
         else:
             targets = targets.to(self.surrogate.device)
 
-        if isinstance(targets, dict):
-            dataset = torch.utils.data.TensorDataset(inputs, *[v for v in targets.values()])
-            target_keys = list(targets.keys())
-        else:
-            dataset = torch.utils.data.TensorDataset(inputs, targets)
-            target_keys = None
+        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
 
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         losses = []
         for epoch in range(n_epochs):
             epoch_loss = 0.0
             for batch in loader:
                 batch_x = batch[0]
                 self.optimizer.zero_grad()
-                output = self.surrogate.forward(batch_x)
+                output = self.surrogate(batch_x)
 
                 if target_keys is not None:
-                    loss = sum(self.loss_fn(output[k], batch[i + 1]) for i, k in enumerate(target_keys))
+                    loss = sum(
+                        self.loss_fn(output[k], batch[i + 1]) for i, k in enumerate(target_keys)
+                    )
                 else:
                     loss = self.loss_fn(output, batch[1])
 
                 loss.backward()
                 if grad_clip is not None:
-                    torch.nn.utils.clip_grad_norm_(self.surrogate.get_network().parameters(), grad_clip)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.surrogate.get_network().parameters(), grad_clip
+                    )
                 self.optimizer.step()
                 epoch_loss += loss.item()
             avg = epoch_loss / len(loader)
@@ -82,6 +90,13 @@ class SurrogateTrainer:
             self.surrogate.stats.train_losses.append(avg)
             if self.scheduler:
                 self.scheduler.step()
+            if self.convergence_monitor is not None:
+                action = self.convergence_monitor.update(avg, epoch)
+                if action == ConvergenceAction.EARLY_STOP:
+                    break
+                if action == ConvergenceAction.REDUCE_LR:
+                    for pg in self.optimizer.param_groups:
+                        pg["lr"] *= 0.5
         return losses
 
     def state_dict(self) -> dict:

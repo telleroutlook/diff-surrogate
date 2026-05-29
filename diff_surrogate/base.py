@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -37,6 +38,7 @@ class AdaptiveCorrectionPolicy:
     If correction errors are growing, correct more often (decrease interval).
     If errors are stable and small, correct less often (increase interval).
     """
+
     min_interval: int = 2
     max_interval: int = 50
     initial_interval: int = 10
@@ -59,10 +61,14 @@ class AdaptiveCorrectionPolicy:
 
     def update_error(self, error: float):
         """Call after each correction with the measured error."""
-        new_ema = error if self._error_ema is None else self.ema_alpha * error + (1 - self.ema_alpha) * self._error_ema
+        new_ema = (
+            error
+            if self._error_ema is None
+            else self.ema_alpha * error + (1 - self.ema_alpha) * self._error_ema
+        )
 
-        if self._prev_error_ema is not None and self._error_ema is not None and self._error_ema > 0:
-            ratio = new_ema / self._error_ema
+        if self._prev_error_ema is not None and self._prev_error_ema > 0:
+            ratio = new_ema / self._prev_error_ema
             if ratio > self.growth_threshold:
                 self._current_interval = max(self.min_interval, self._current_interval - 2)
             elif ratio < self.shrink_threshold:
@@ -137,16 +143,13 @@ class SurrogateBase(ABC, nn.Module):
         return self._trained
 
     @abstractmethod
-    def _build_network(self) -> nn.Module:
-        ...
+    def _build_network(self) -> nn.Module: ...
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        ...
+    def forward(self, x: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]: ...
 
     @abstractmethod
-    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
-        ...
+    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]: ...
 
     def get_network(self) -> nn.Module:
         if self._network is None:
@@ -185,13 +188,13 @@ class SurrogateBase(ABC, nn.Module):
             losses.append(avg_loss)
 
         self._trained = True
-        self.stats.train_losses = losses
+        self.stats.train_losses.extend(losses)
         return losses
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         self.stats.total_predictions += 1
         with torch.no_grad():
-            return self.forward(x.to(self.device))
+            return self(x.to(self.device))
 
     def predict_with_correction(
         self,
@@ -208,6 +211,8 @@ class SurrogateBase(ABC, nn.Module):
                 surrogate_output = surrogate_output.to(true_output.device)
                 error = torch.mean((true_output - surrogate_output) ** 2).item()
                 self.stats.correction_errors.append(error)
+                if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
+                    self.correction_policy.update_error(error)
             self.stats.total_corrections += 1
             return true_output, action
 
@@ -228,7 +233,7 @@ class SurrogateBase(ABC, nn.Module):
         return {"mse": mse, "rmse": mse**0.5}
 
     def save_checkpoint(self, path: str, optimizer: Any | None = None):
-        """Save network state, stats, step count, optional optimizer, correction policy, and RNG states."""
+        """Save state: network, stats, step, optimizer, correction policy, RNG."""
         checkpoint: dict[str, Any] = {
             "network_state_dict": self.get_network().state_dict(),
             "stats": {
@@ -262,7 +267,7 @@ class SurrogateBase(ABC, nn.Module):
             checkpoint["rng_state"]["cuda"] = torch.cuda.get_rng_state_all()
         torch.save(checkpoint, path)
 
-    def load_checkpoint(self, path: str, weights_only: bool = False):
+    def load_checkpoint(self, path: str, weights_only: bool = True):
         """Restore network state, stats, step count, and all saved state from a file."""
         checkpoint = torch.load(path, map_location=self.device, weights_only=weights_only)
         self.get_network().load_state_dict(checkpoint["network_state_dict"])
@@ -276,7 +281,9 @@ class SurrogateBase(ABC, nn.Module):
         self.stats.uncertainty_calibration = stats.get("uncertainty_calibration", 0.0)
         self._step = checkpoint["step"]
         self._trained = checkpoint["trained"]
-        if "correction_policy" in checkpoint and isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
+        if "correction_policy" in checkpoint and isinstance(
+            self.correction_policy, AdaptiveCorrectionPolicy
+        ):
             cp = checkpoint["correction_policy"]
             self.correction_policy._current_interval = cp["_current_interval"]
             self.correction_policy._error_ema = cp["_error_ema"]
@@ -292,3 +299,20 @@ class SurrogateBase(ABC, nn.Module):
             torch.random.set_rng_state(rng["torch"])
             if torch.cuda.is_available() and "cuda" in rng:
                 torch.cuda.set_rng_state_all(rng["cuda"])
+
+
+def _build_dataloader(
+    inputs: torch.Tensor,
+    targets: torch.Tensor | dict[str, torch.Tensor],
+    batch_size: int = 32,
+    shuffle: bool = True,
+) -> tuple[torch.utils.data.DataLoader, list[str] | None]:
+    """Build a DataLoader handling dict or tensor targets."""
+    if isinstance(targets, dict):
+        dataset = torch.utils.data.TensorDataset(inputs, *targets.values())
+        return (
+            torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle),
+            list(targets.keys()),
+        )
+    dataset = torch.utils.data.TensorDataset(inputs, targets)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle), None

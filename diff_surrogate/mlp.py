@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 import torch.nn as nn
 
-from typing import Callable
-
-from .base import SurrogateBase, CorrectionPolicy
+from .base import CorrectionPolicy, SurrogateBase, _build_dataloader
 
 
 class MonotoneLinear(nn.Linear):
@@ -96,7 +96,7 @@ class MLPSurrogate(SurrogateBase):
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         self.stats.total_predictions += 1
         with torch.no_grad():
-            return self.forward(x.to(self.device))
+            return self(x.to(self.device))
 
     def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self._data_generator is not None:
@@ -122,22 +122,15 @@ class MLPSurrogate(SurrogateBase):
         net = self.get_network()
         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
 
-        if isinstance(targets, dict):
-            # Dict targets — use custom collation
-            dataset = torch.utils.data.TensorDataset(inputs, *[v for v in targets.values()])
-            target_keys = list(targets.keys())
-        else:
-            dataset = torch.utils.data.TensorDataset(inputs, targets)
-            target_keys = None
+        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
 
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         losses = []
         for _ in range(n_epochs):
             epoch_loss = 0.0
             for batch in loader:
                 batch_x = batch[0]
                 optimizer.zero_grad()
-                output = self.forward(batch_x)
+                output = self(batch_x)
                 if target_keys is not None:
                     loss = sum(
                         torch.nn.functional.mse_loss(output[k], batch[i + 1])

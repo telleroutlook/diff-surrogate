@@ -37,3 +37,13 @@ include = ["diff_surrogate*"]
 
 [tool.setuptools.package-data]
 diff_surrogate = ["py.typed"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

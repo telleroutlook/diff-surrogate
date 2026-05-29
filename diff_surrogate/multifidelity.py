@@ -5,12 +5,12 @@ The loop spends most steps evaluating the fast ``surrogate_fn`` and periodically
 calls the expensive ``truth_fn`` to correct the optimization trajectory. An
 optional ``calibration_fn`` can adjust the surrogate based on truth evaluations.
 """
+
 from __future__ import annotations
 
-import copy
 import logging
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -30,6 +30,7 @@ class MultiFidelityConfig:
             that adjusts the surrogate after a truth evaluation.
         log_interval: Print status every this many steps (0 = silent).
     """
+
     correction_interval: int = 20
     calibration_fn: Callable | None = None
     log_interval: int = 25
@@ -39,10 +40,11 @@ class MultiFidelityConfig:
 @dataclass
 class MultiFidelityResult:
     """Result of a multi-fidelity optimization run."""
+
     design: Tensor
     loss_history: list[float]
-    fidelity_history: list[str]       # "surrogate" or "truth" per step
-    truth_steps: list[int]            # indices where truth was evaluated
+    fidelity_history: list[str]  # "surrogate" or "truth" per step
+    truth_steps: list[int]  # indices where truth was evaluated
     converged: bool
     final_step: int
 
@@ -96,7 +98,7 @@ def optimize_multifidelity(
     for step in range(n_steps):
         optimizer.zero_grad()
 
-        use_truth = (step > 0 and step % cfg.correction_interval == 0)
+        use_truth = step > 0 and step % cfg.correction_interval == 0
         fidelity = "truth" if use_truth else "surrogate"
         fidelity_history.append(fidelity)
 

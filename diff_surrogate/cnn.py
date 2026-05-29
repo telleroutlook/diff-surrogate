@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 import torch.nn as nn
 
-from typing import Callable
-
-from .base import SurrogateBase, CorrectionPolicy
+from .base import CorrectionPolicy, SurrogateBase
 
 
 class _CNNFieldNet(nn.Module):

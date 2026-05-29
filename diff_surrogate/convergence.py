@@ -14,16 +14,18 @@ The weight ``w`` controls robustness: w=0 is pure standard z-score,
 w=1 is pure robust z-score. Default w=0.5 balances sensitivity and
 outlier resistance.
 """
+
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Sequence
 
 
 class ConvergenceAction(Enum):
     """Recommended action from the convergence monitor."""
+
     CONTINUE = "continue"
     EARLY_STOP = "early_stop"
     REDUCE_LR = "reduce_lr"
@@ -41,6 +43,7 @@ class ConvergenceConfig:
         min_steps: Minimum steps before any convergence action is taken.
         patience: Number of consecutive reduce-lr signals before early stop.
     """
+
     window: int = 20
     hybrid_weight: float = 0.5
     early_stop_threshold: float = 0.05
@@ -69,7 +72,7 @@ def _mean(values: list[float]) -> float:
 
 
 def _std(values: list[float]) -> float:
-    """Compute standard deviation (population) of a list of floats."""
+    """Compute sample standard deviation (Bessel-corrected, n-1) of a list of floats."""
     if len(values) < 2:
         return 0.0
     m = _mean(values)
@@ -174,7 +177,7 @@ class ConvergenceMonitor:
         if len(self._history) < self._config.window:
             return ConvergenceAction.CONTINUE
 
-        window = self._history[-self._config.window:]
+        window = self._history[-self._config.window :]
         z = hybrid_z_score(window, weight=self._config.hybrid_weight)
         abs_z = abs(z)
 

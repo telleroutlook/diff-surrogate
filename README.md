@@ -167,10 +167,12 @@ for region in range(4):
     n_samples = budget.allocate(region)
     if n_samples == 0:
         continue
-    data = solver.generate(n_samples, region=region)
-    surrogate.train_step(data)
-    mse = surrogate.evaluate(region=region)
-    budget.record_accuracy(region, mse)
+    # Generate data using expensive solver for this region
+    inputs, targets = generate_solver_data(n_samples, region=region)
+    surrogate.train_surrogate(n_samples=n_samples, n_epochs=10)
+    # Evaluate accuracy on held-out data
+    acc = surrogate.accuracy(n_samples=50, true_solver_fn=lambda x: true_solver(x, region=region))
+    budget.record_accuracy(region, acc["mse"])
     budget.record_calls(region, n_samples)
 ```
 

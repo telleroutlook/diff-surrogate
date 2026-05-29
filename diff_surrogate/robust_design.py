@@ -6,10 +6,13 @@ Three composable techniques (from R2) combined in a single step function:
 2. Antithetic sampling -- paired perturbations for variance reduction
 3. Multi-corner evaluation -- weighted losses at multiple operating points
 """
+
 from __future__ import annotations
 
+import warnings
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -27,6 +30,7 @@ class AntitheticConfig:
             (design, n_pairs) and return a Tensor of shape (n_pairs, *design.shape).
             If None, isotropic Gaussian noise with std=0.01 is used.
     """
+
     n_pairs: int = 4
     perturbation_fn: Callable | None = None
 
@@ -40,6 +44,7 @@ class CornerSpec:
         weight: Relative weight for this corner's loss in the combined objective.
         params: Keyword arguments forwarded to ``forward_fn`` for this corner.
     """
+
     label: str
     weight: float = 1.0
     params: dict = field(default_factory=dict)
@@ -77,7 +82,7 @@ def robust_design_step(
     convergence_monitor: ConvergenceMonitor | None = None,
     step: int = 0,
     batched: bool = False,
-) -> tuple[Tensor, ConvergenceAction]:
+) -> tuple[Tensor, ConvergenceAction, Any | None]:
     """Compute robust loss with optional mask, antithetic sampling, and multi-corner evaluation.
 
     The evaluation proceeds in composable layers:
@@ -112,6 +117,14 @@ def robust_design_step(
     Returns:
         Tuple of (combined loss tensor with grad graph attached, convergence action).
     """
+    if batched and corners:
+        warnings.warn(
+            "batched=True is ignored when corners are provided; "
+            "falling back to sequential evaluation.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     # --- 1. Compute nominal losses (multi-corner or single) ---
     if corners:
         corner_losses: list[Tensor] = []
@@ -132,7 +145,9 @@ def robust_design_step(
         if batched and not corners:
             perturbed_batch = design.unsqueeze(0) + deltas  # (n_pairs, *design.shape)
             batch_output = forward_fn(perturbed_batch)  # (n_pairs, ...)
-            batch_losses = torch.stack([loss_fn(batch_output[i]) for i in range(antithetic_config.n_pairs)])
+            batch_losses = torch.stack(
+                [loss_fn(batch_output[i]) for i in range(antithetic_config.n_pairs)]
+            )
             avg_antithetic = batch_losses.mean()
         else:
             antithetic_losses: list[Tensor] = []

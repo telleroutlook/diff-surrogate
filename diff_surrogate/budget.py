@@ -1,4 +1,5 @@
 """Budget-aware training data generation for expensive solvers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +8,7 @@ from dataclasses import dataclass, field
 @dataclass
 class TrainingBudget:
     """Allocates a fixed compute budget across input regions and properties."""
+
     total_solver_calls: int = 1000
     n_regions: int = 4
     properties: list[str] = field(default_factory=lambda: ["value"])
