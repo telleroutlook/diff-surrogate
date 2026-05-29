@@ -73,7 +73,7 @@ def _std(values: list[float]) -> float:
     if len(values) < 2:
         return 0.0
     m = _mean(values)
-    return math.sqrt(sum((v - m) ** 2 for v in values) / len(values))
+    return math.sqrt(sum((v - m) ** 2 for v in values) / (len(values) - 1))
 
 
 def _mad(values: list[float]) -> float:
@@ -185,11 +185,13 @@ class ConvergenceMonitor:
             return ConvergenceAction.CONTINUE
 
         if abs_z < self._config.early_stop_threshold:
+            self._reduce_lr_count = 0
             return ConvergenceAction.EARLY_STOP
 
         if abs_z < self._config.reduce_lr_threshold:
             self._reduce_lr_count += 1
             if self._reduce_lr_count >= self._config.patience:
+                self._reduce_lr_count = 0
                 return ConvergenceAction.EARLY_STOP
             return ConvergenceAction.REDUCE_LR
 

@@ -48,7 +48,6 @@ class EnsembleSurrogate(SurrogateBase):
             return {"output": mean, "output_std": std}
 
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        self._step += 1
         self.stats.total_predictions += 1
         with torch.no_grad():
             result = self.forward(x.to(self.device))
@@ -77,3 +76,9 @@ class EnsembleSurrogate(SurrogateBase):
 
     def get_members(self) -> list[SurrogateBase]:
         return self._members
+
+    def to(self, *args, **kwargs):
+        result = super().to(*args, **kwargs)
+        for m in self._members:
+            m.to(*args, **kwargs)
+        return result

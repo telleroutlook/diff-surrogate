@@ -7,7 +7,7 @@ name = "diff-surrogate"
 version = "0.1.0"
 description = "Unified differentiable surrogate framework for physics simulations"
 requires-python = ">=3.10,<3.14"
-license = "MIT"
+license = "Apache-2.0"
 authors = [
     {name = "telleroutlook"},
 ]

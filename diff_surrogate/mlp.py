@@ -10,24 +10,26 @@ from typing import Callable
 from .base import SurrogateBase, CorrectionPolicy
 
 
+class MonotoneLinear(nn.Linear):
+    """Linear layer with monotonicity constraint via absolute weights."""
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x @ self.weight.abs().T + self.bias
+
+
 class MonotoneMLP(nn.Module):
     """MLP with monotonicity constraint via positive weights."""
 
     def __init__(self, in_features: int, hidden: int = 64, n_layers: int = 3):
         super().__init__()
-        layers = [nn.Linear(in_features, hidden), nn.ReLU()]
+        layers = [MonotoneLinear(in_features, hidden), nn.ReLU()]
         for _ in range(n_layers - 2):
-            layers.extend([nn.Linear(hidden, hidden), nn.ReLU()])
-        layers.append(nn.Linear(hidden, 1))
+            layers.extend([MonotoneLinear(hidden, hidden), nn.ReLU()])
+        layers.append(MonotoneLinear(hidden, 1))
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for module in self.net:
-            if isinstance(module, nn.Linear):
-                x = x @ torch.abs(module.weight).T + module.bias
-            else:
-                x = module(x)
-        return x
+        return self.net(x)
 
 
 class PositiveOutputMLP(nn.Module):
@@ -80,11 +82,11 @@ class MLPSurrogate(SurrogateBase):
             elif constraint == "positive":
                 nets[prop] = PositiveOutputMLP(self.n_inputs, self.hidden, self.n_layers)
             else:
-                nets[prop] = nn.Sequential(
-                    nn.Linear(self.n_inputs, self.hidden), nn.ReLU(),
-                    nn.Linear(self.hidden, self.hidden), nn.ReLU(),
-                    nn.Linear(self.hidden, 1),
-                )
+                layers = [nn.Linear(self.n_inputs, self.hidden), nn.ReLU()]
+                for _ in range(self.n_layers - 2):
+                    layers.extend([nn.Linear(self.hidden, self.hidden), nn.ReLU()])
+                layers.append(nn.Linear(self.hidden, 1))
+                nets[prop] = nn.Sequential(*layers)
         return nn.ModuleDict(nets)
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -108,6 +110,7 @@ class MLPSurrogate(SurrogateBase):
         n_samples: int = 256,
         n_epochs: int = 10,
         lr: float = 1e-3,
+        batch_size: int = 32,
         device: str | None = None,
     ) -> list[float]:
         dev = device or self.device
@@ -115,20 +118,38 @@ class MLPSurrogate(SurrogateBase):
         inputs = inputs.to(dev)
         if isinstance(targets, dict):
             targets = {k: v.to(dev) for k, v in targets.items()}
-        else:
-            targets = targets.to(dev)
+
         net = self.get_network()
         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+
+        if isinstance(targets, dict):
+            # Dict targets — use custom collation
+            dataset = torch.utils.data.TensorDataset(inputs, *[v for v in targets.values()])
+            target_keys = list(targets.keys())
+        else:
+            dataset = torch.utils.data.TensorDataset(inputs, targets)
+            target_keys = None
+
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         losses = []
         for _ in range(n_epochs):
-            optimizer.zero_grad()
-            output = self.forward(inputs)
-            loss = sum(
-                torch.nn.functional.mse_loss(output[k], targets[k]) for k in targets
-            )
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item())
-            self.stats.train_losses.append(loss.item())
+            epoch_loss = 0.0
+            for batch in loader:
+                batch_x = batch[0]
+                optimizer.zero_grad()
+                output = self.forward(batch_x)
+                if target_keys is not None:
+                    loss = sum(
+                        torch.nn.functional.mse_loss(output[k], batch[i + 1])
+                        for i, k in enumerate(target_keys)
+                    )
+                else:
+                    loss = torch.nn.functional.mse_loss(output, batch[1])
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+            avg = epoch_loss / len(loader)
+            losses.append(avg)
+            self.stats.train_losses.append(avg)
         self._trained = True
         return losses

@@ -43,31 +43,45 @@ class SurrogateTrainer:
         else:
             self.scheduler = None
 
-    def train(self, n_epochs: int = 10, n_samples: int = 256) -> list[float]:
+    def train(self, n_epochs: int = 10, n_samples: int = 256, batch_size: int = 32, grad_clip: float | None = None) -> list[float]:
+        inputs, targets = self.surrogate.generate_training_data(n_samples)
+        inputs = inputs.to(self.surrogate.device)
+        if isinstance(targets, dict):
+            targets = {k: v.to(self.surrogate.device) for k, v in targets.items()}
+        else:
+            targets = targets.to(self.surrogate.device)
+
+        if isinstance(targets, dict):
+            dataset = torch.utils.data.TensorDataset(inputs, *[v for v in targets.values()])
+            target_keys = list(targets.keys())
+        else:
+            dataset = torch.utils.data.TensorDataset(inputs, targets)
+            target_keys = None
+
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         losses = []
         for epoch in range(n_epochs):
-            inputs, targets = self.surrogate.generate_training_data(n_samples)
-            inputs = inputs.to(self.surrogate.device)
-            if isinstance(targets, dict):
-                targets = {k: v.to(self.surrogate.device) for k, v in targets.items()}
-            else:
-                targets = targets.to(self.surrogate.device)
+            epoch_loss = 0.0
+            for batch in loader:
+                batch_x = batch[0]
+                self.optimizer.zero_grad()
+                output = self.surrogate.forward(batch_x)
 
-            self.optimizer.zero_grad()
-            output = self.surrogate.forward(inputs)
+                if target_keys is not None:
+                    loss = sum(self.loss_fn(output[k], batch[i + 1]) for i, k in enumerate(target_keys))
+                else:
+                    loss = self.loss_fn(output, batch[1])
 
-            if isinstance(targets, dict) and isinstance(output, dict):
-                loss = sum(self.loss_fn(output[k], targets[k]) for k in targets)
-            else:
-                loss = self.loss_fn(output, targets)
-
-            loss.backward()
-            self.optimizer.step()
+                loss.backward()
+                if grad_clip is not None:
+                    torch.nn.utils.clip_grad_norm_(self.surrogate.get_network().parameters(), grad_clip)
+                self.optimizer.step()
+                epoch_loss += loss.item()
+            avg = epoch_loss / len(loader)
+            losses.append(avg)
+            self.surrogate.stats.train_losses.append(avg)
             if self.scheduler:
                 self.scheduler.step()
-
-            losses.append(loss.item())
-            self.surrogate.stats.train_losses.append(loss.item())
         return losses
 
     def state_dict(self) -> dict:

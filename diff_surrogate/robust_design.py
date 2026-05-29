@@ -155,6 +155,7 @@ def robust_design_step(
         total_loss = nominal_loss
 
     # --- 3. Designable mask (register gradient hook) ---
+    mask_handle = None
     if designable_mask is not None:
         frozen = ~designable_mask
 
@@ -162,12 +163,11 @@ def robust_design_step(
             return grad.clone().masked_fill_(frozen, 0.0)
 
         if design.requires_grad:
-            if not hasattr(design, '_diffsurr_mask_handle'):
-                design._diffsurr_mask_handle = design.register_hook(_mask_grad)
+            mask_handle = design.register_hook(_mask_grad)
 
     # --- 4. Convergence monitoring ---
     action = ConvergenceAction.CONTINUE
     if convergence_monitor is not None:
         action = convergence_monitor.update(total_loss.item(), step)
 
-    return total_loss, action
+    return total_loss, action, mask_handle

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
@@ -96,8 +97,8 @@ class AdaptiveCorrectionPolicy:
 
 @dataclass
 class SurrogateStats:
-    train_losses: list = field(default_factory=list)
-    correction_errors: list = field(default_factory=list)
+    train_losses: deque = field(default_factory=lambda: deque(maxlen=1000))
+    correction_errors: deque = field(default_factory=lambda: deque(maxlen=1000))
     total_predictions: int = 0
     total_corrections: int = 0
     per_property_accuracy: dict[str, float] = field(default_factory=dict)
@@ -217,12 +218,12 @@ class SurrogateBase(ABC, nn.Module):
         n_samples: int = 100,
         true_solver_fn: Callable | None = None,
     ) -> dict[str, float]:
-        if true_solver_fn is None:
-            true_solver_fn = self.generate_training_data
-
         inputs, targets = self.generate_training_data(n_samples)
+        if true_solver_fn is not None:
+            with torch.no_grad():
+                targets = true_solver_fn(inputs)
         with torch.no_grad():
-            preds = self.get_network()(inputs.to(self.device))
+            preds = self.forward(inputs.to(self.device))
         mse = torch.mean((preds - targets.to(self.device)) ** 2).item()
         return {"mse": mse, "rmse": mse**0.5}
 
@@ -231,8 +232,8 @@ class SurrogateBase(ABC, nn.Module):
         checkpoint: dict[str, Any] = {
             "network_state_dict": self.get_network().state_dict(),
             "stats": {
-                "train_losses": self.stats.train_losses,
-                "correction_errors": self.stats.correction_errors,
+                "train_losses": list(self.stats.train_losses),
+                "correction_errors": list(self.stats.correction_errors),
                 "total_predictions": self.stats.total_predictions,
                 "total_corrections": self.stats.total_corrections,
                 "per_property_accuracy": self.stats.per_property_accuracy,
@@ -256,20 +257,19 @@ class SurrogateBase(ABC, nn.Module):
             checkpoint["convergence_history"] = convergence_monitor.history
         checkpoint["rng_state"] = {
             "torch": torch.random.get_rng_state(),
-            "cpu": torch.random.get_rng_state().cpu() if torch.cuda.is_available() else None,
         }
         if torch.cuda.is_available():
             checkpoint["rng_state"]["cuda"] = torch.cuda.get_rng_state_all()
         torch.save(checkpoint, path)
 
-    def load_checkpoint(self, path: str):
+    def load_checkpoint(self, path: str, weights_only: bool = False):
         """Restore network state, stats, step count, and all saved state from a file."""
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=weights_only)
         self.get_network().load_state_dict(checkpoint["network_state_dict"])
         self.get_network().to(self.device)
         stats = checkpoint["stats"]
-        self.stats.train_losses = stats["train_losses"]
-        self.stats.correction_errors = stats["correction_errors"]
+        self.stats.train_losses = deque(stats["train_losses"], maxlen=1000)
+        self.stats.correction_errors = deque(stats["correction_errors"], maxlen=1000)
         self.stats.total_predictions = stats["total_predictions"]
         self.stats.total_corrections = stats["total_corrections"]
         self.stats.per_property_accuracy = stats.get("per_property_accuracy", {})

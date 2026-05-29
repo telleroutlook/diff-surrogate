@@ -13,13 +13,12 @@ class TrainingBudget:
     accuracy_target: float = 0.01
     pressure_threshold: float = 0.8
 
-    _calls_per_region: dict[int, int] = field(default_factory=dict, repr=False)
-    _accuracy_per_region: dict[int, float] = field(default_factory=dict, repr=False)
-    _total_calls: int = 0
+    def __post_init__(self):
+        self._calls_per_region: dict[int, int] = {i: 0 for i in range(self.n_regions)}
+        self._accuracy_per_region: dict[int, float] = {i: 1.0 for i in range(self.n_regions)}
+        self._total_calls: int = 0
 
     def allocate(self, region: int) -> int:
-        if not self._calls_per_region:
-            self._calls_per_region = {i: 0 for i in range(self.n_regions)}
         remaining = self.total_solver_calls - self._total_calls
         if remaining <= 0:
             return 0

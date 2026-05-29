@@ -52,7 +52,7 @@ surrogate = CNNSurrogate(
     out_channels=3,      # output field channels (ux, uy, p)
     hidden=32,
     grid_size=64,
-    correction_policy=CorrectionPolicy(interval=10),
+    correction_policy=CorrectionPolicy(correction_interval=10),
 )
 ```
 
@@ -136,11 +136,11 @@ Compose mask + antithetic sampling + multi-corner evaluation:
 ```python
 from diff_surrogate import robust_design_step, AntitheticConfig, CornerSpec
 
-loss = robust_design_step(
+loss, action, mask_handle = robust_design_step(
     design=my_design,
     forward_fn=my_solver,
     loss_fn=my_loss,
-    antithetic_config=AntitheticConfig(n_pairs=4, sigma=0.01),
+    antithetic_config=AntitheticConfig(n_pairs=4),
     corners=[
         CornerSpec(label="nominal", weight=0.5, params={}),
         CornerSpec(label="upper", weight=0.25, params={"velocity": 1.2}),
@@ -211,4 +211,4 @@ Supporting:
 
 ## License
 
-Personal research project. Not for production use.
+Apache License 2.0

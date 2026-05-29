@@ -56,6 +56,7 @@ def optimize_multifidelity(
     lr: float = 1e-3,
     config: MultiFidelityConfig | None = None,
     convergence_monitor: ConvergenceMonitor | None = None,
+    grad_clip: float | None = None,
 ) -> MultiFidelityResult:
     """Multi-fidelity optimization alternating between surrogate and truth.
 
@@ -95,7 +96,7 @@ def optimize_multifidelity(
     for step in range(n_steps):
         optimizer.zero_grad()
 
-        use_truth = (step % cfg.correction_interval == 0)
+        use_truth = (step > 0 and step % cfg.correction_interval == 0)
         fidelity = "truth" if use_truth else "surrogate"
         fidelity_history.append(fidelity)
 
@@ -128,6 +129,8 @@ def optimize_multifidelity(
 
         loss = loss_fn(output)
         loss.backward()
+        if grad_clip is not None:
+            torch.nn.utils.clip_grad_norm_([design], grad_clip)
         optimizer.step()
 
         loss_val = loss.item()
