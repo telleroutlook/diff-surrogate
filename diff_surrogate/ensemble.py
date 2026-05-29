@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from typing import Callable
 from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats
 from .cnn import CNNSurrogate
 from .mlp import MLPSurrogate
@@ -17,7 +18,7 @@ class EnsembleSurrogate(SurrogateBase):
 
     def __init__(
         self,
-        base_factory: callable,
+        base_factory: Callable,
         n_members: int = 5,
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
@@ -32,13 +33,19 @@ class EnsembleSurrogate(SurrogateBase):
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         member_outputs = [m.forward(x) for m in self._members]
-        keys = member_outputs[0].keys()
-        result = {}
-        for key in keys:
-            stacked = torch.stack([out[key] for out in member_outputs], dim=0)  # (K, ...)
-            result[key] = stacked.mean(dim=0)
-            result[f"{key}_std"] = stacked.std(dim=0)
-        return result
+        if isinstance(member_outputs[0], dict):
+            keys = member_outputs[0].keys()
+            result = {}
+            for key in keys:
+                stacked = torch.stack([out[key] for out in member_outputs], dim=0)  # (K, ...)
+                result[key] = stacked.mean(dim=0)
+                result[f"{key}_std"] = stacked.std(dim=0)
+            return result
+        else:
+            stacked = torch.stack(member_outputs, dim=0)  # (K, ...)
+            mean = stacked.mean(dim=0)
+            std = stacked.std(dim=0)
+            return {"output": mean, "output_std": std}
 
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         self._step += 1

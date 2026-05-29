@@ -30,7 +30,7 @@ surrogate = MLPSurrogate(
     hidden=64,
     n_layers=3,
     constrained={"density": "monotone", "cp": "positive"},
-    correction_policy=CorrectionPolicy(interval=20, warmup_steps=5),
+    correction_policy=CorrectionPolicy(correction_interval=20, warmup_steps=5),
 )
 
 # Predict
@@ -104,8 +104,8 @@ from diff_surrogate import ConvergenceMonitor, ConvergenceConfig
 monitor = ConvergenceMonitor(ConvergenceConfig(
     window=50,
     hybrid_weight=0.5,
-    early_stop_z=0.05,
-    reduce_lr_z=0.1,
+    early_stop_threshold=0.05,
+    reduce_lr_threshold=0.1,
 ))
 
 action = monitor.update(loss=0.001, step=100)
@@ -142,9 +142,9 @@ loss = robust_design_step(
     loss_fn=my_loss,
     antithetic_config=AntitheticConfig(n_pairs=4, sigma=0.01),
     corners=[
-        CornerSpec(name="nominal", weight=0.5, params={}),
-        CornerSpec(name="upper", weight=0.25, params={"velocity": 1.2}),
-        CornerSpec(name="lower", weight=0.25, params={"velocity": 0.8}),
+        CornerSpec(label="nominal", weight=0.5, params={}),
+        CornerSpec(label="upper", weight=0.25, params={"velocity": 1.2}),
+        CornerSpec(label="lower", weight=0.25, params={"velocity": 0.8}),
     ],
     step=step,
 )

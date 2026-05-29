@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Sequence
+from typing import Callable, Sequence
 
 
 class ConvergenceAction(Enum):
@@ -101,7 +101,12 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     Returns:
         Hybrid z-score scalar. Returns 0.0 if insufficient data.
     """
+    # Early return for very small windows — O(n log n) from sorting is wasteful here.
     if len(values) < 2:
+        return 0.0
+
+    # Constant sequence cannot produce a meaningful z-score.
+    if min(values) == max(values):
         return 0.0
 
     current = values[-1]
@@ -165,9 +170,19 @@ class ConvergenceMonitor:
         if step < self._config.min_steps:
             return ConvergenceAction.CONTINUE
 
+        # Not enough data to judge convergence — must accumulate at least a full window.
+        if len(self._history) < self._config.window:
+            return ConvergenceAction.CONTINUE
+
         window = self._history[-self._config.window:]
         z = hybrid_z_score(window, weight=self._config.hybrid_weight)
         abs_z = abs(z)
+
+        # Stagnant loss (std + mad == 0) — cannot distinguish true convergence from stagnation.
+        window_std = _std(window)
+        window_mad = _mad(window)
+        if window_std + window_mad == 0:
+            return ConvergenceAction.CONTINUE
 
         if abs_z < self._config.early_stop_threshold:
             return ConvergenceAction.EARLY_STOP

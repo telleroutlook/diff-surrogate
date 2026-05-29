@@ -5,6 +5,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from typing import Callable
+
 from .base import SurrogateBase, CorrectionPolicy
 
 
@@ -59,7 +61,7 @@ class MLPSurrogate(SurrogateBase):
         constrained: dict[str, str] | None = None,
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
-        data_generator: callable | None = None,
+        data_generator: Callable | None = None,
     ):
         self.n_inputs = n_inputs
         self.properties = properties or ["value"]
@@ -90,7 +92,6 @@ class MLPSurrogate(SurrogateBase):
         return {prop: module(x).squeeze(-1) for prop, module in net.items()}
 
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        self._step += 1
         self.stats.total_predictions += 1
         with torch.no_grad():
             return self.forward(x.to(self.device))
@@ -101,3 +102,33 @@ class MLPSurrogate(SurrogateBase):
         inputs = torch.randn(n_samples, self.n_inputs)
         targets = {prop: torch.randn(n_samples) for prop in self.properties}
         return inputs, targets
+
+    def train_surrogate(
+        self,
+        n_samples: int = 256,
+        n_epochs: int = 10,
+        lr: float = 1e-3,
+        device: str | None = None,
+    ) -> list[float]:
+        dev = device or self.device
+        inputs, targets = self.generate_training_data(n_samples)
+        inputs = inputs.to(dev)
+        if isinstance(targets, dict):
+            targets = {k: v.to(dev) for k, v in targets.items()}
+        else:
+            targets = targets.to(dev)
+        net = self.get_network()
+        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+        losses = []
+        for _ in range(n_epochs):
+            optimizer.zero_grad()
+            output = self.forward(inputs)
+            loss = sum(
+                torch.nn.functional.mse_loss(output[k], targets[k]) for k in targets
+            )
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.item())
+            self.stats.train_losses.append(loss.item())
+        self._trained = True
+        return losses

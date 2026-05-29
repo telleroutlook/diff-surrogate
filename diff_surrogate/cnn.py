@@ -5,6 +5,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from typing import Callable
+
 from .base import SurrogateBase, CorrectionPolicy
 
 
@@ -42,7 +44,7 @@ class CNNSurrogate(SurrogateBase):
         grid_size: int = 64,
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
-        data_generator: callable | None = None,
+        data_generator: Callable | None = None,
     ):
         self.in_channels = in_channels
         self.out_channels = out_channels

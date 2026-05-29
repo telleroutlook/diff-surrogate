@@ -8,6 +8,7 @@ optional ``calibration_fn`` can adjust the surrogate based on truth evaluations.
 from __future__ import annotations
 
 import copy
+import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -15,6 +16,8 @@ import torch
 from torch import Tensor
 
 from .convergence import ConvergenceAction, ConvergenceMonitor
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,6 +33,7 @@ class MultiFidelityConfig:
     correction_interval: int = 20
     calibration_fn: Callable | None = None
     log_interval: int = 25
+    truth_mode: str = "differentiable"  # "differentiable" | "surrogate_grad" | "calibration_only"
 
 
 @dataclass
@@ -97,10 +101,28 @@ def optimize_multifidelity(
 
         if use_truth:
             truth_steps.append(step)
-            output = truth_fn(design)
 
-            if cfg.calibration_fn is not None:
-                cfg.calibration_fn(surrogate_fn, design, output)
+            if cfg.truth_mode == "surrogate_grad":
+                # Straight-through estimator: use truth output detached, but pass
+                # gradients through the surrogate so the optimizer still gets a signal.
+                with torch.no_grad():
+                    truth_output = truth_fn(design)
+                surrogate_output = surrogate_fn(design)
+                if cfg.calibration_fn is not None:
+                    cfg.calibration_fn(surrogate_fn, design, truth_output)
+                output = truth_output + (surrogate_output - surrogate_output.detach())
+            elif cfg.truth_mode == "calibration_only":
+                # Truth output is only used for calibration — loss uses surrogate.
+                with torch.no_grad():
+                    truth_output = truth_fn(design)
+                if cfg.calibration_fn is not None:
+                    cfg.calibration_fn(surrogate_fn, design, truth_output)
+                output = surrogate_fn(design)
+            else:
+                # "differentiable": current behaviour, loss.backward() flows through truth_fn.
+                output = truth_fn(design)
+                if cfg.calibration_fn is not None:
+                    cfg.calibration_fn(surrogate_fn, design, output)
         else:
             output = surrogate_fn(design)
 
@@ -112,7 +134,7 @@ def optimize_multifidelity(
         loss_history.append(loss_val)
 
         if cfg.log_interval > 0 and (step + 1) % cfg.log_interval == 0:
-            print(f"[step {step+1:4d}] loss={loss_val:.6f}  fidelity={fidelity}")
+            logger.info("[step %4d] loss=%.6f  fidelity=%s", step + 1, loss_val, fidelity)
 
         if convergence_monitor is not None:
             action = convergence_monitor.update(loss_val, step)

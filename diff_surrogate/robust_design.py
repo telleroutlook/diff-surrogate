@@ -76,7 +76,8 @@ def robust_design_step(
     corners: Sequence[CornerSpec] | None = None,
     convergence_monitor: ConvergenceMonitor | None = None,
     step: int = 0,
-) -> Tensor:
+    batched: bool = False,
+) -> tuple[Tensor, ConvergenceAction]:
     """Compute robust loss with optional mask, antithetic sampling, and multi-corner evaluation.
 
     The evaluation proceeds in composable layers:
@@ -87,7 +88,8 @@ def robust_design_step(
 
     2. **Antithetic sampling**: If ``antithetic_config`` is provided, also evaluate
        at ``n_pairs`` perturbed designs (paired +/- deltas) and average their losses
-       with the nominal loss.
+       with the nominal loss.  When ``batched=True``, all perturbed designs are
+       stacked into a single batch and ``forward_fn`` is called once.
 
     3. **Designable mask**: If ``designable_mask`` is provided, gradients for
        frozen (mask=False) pixels are zeroed after backpropagation.
@@ -104,9 +106,11 @@ def robust_design_step(
         corners: If set, enables multi-corner weighted evaluation.
         convergence_monitor: If set, records loss for convergence tracking.
         step: Current step index (passed to convergence monitor).
+        batched: If True, stack all perturbed designs into one batch for a single
+            forward pass.  Falls back to sequential when corners are present.
 
     Returns:
-        Combined loss tensor (with grad graph attached).
+        Tuple of (combined loss tensor with grad graph attached, convergence action).
     """
     # --- 1. Compute nominal losses (multi-corner or single) ---
     if corners:
@@ -124,20 +128,28 @@ def robust_design_step(
         gen_fn = antithetic_config.perturbation_fn or _default_perturbation
         deltas = gen_fn(design, antithetic_config.n_pairs)
 
-        antithetic_losses: list[Tensor] = []
-        for i in range(antithetic_config.n_pairs):
-            perturbed = design + deltas[i]
-            if corners:
-                pert_corner_losses: list[Tensor] = []
-                for corner in corners:
-                    out = forward_fn(perturbed, **corner.params)
-                    pert_corner_losses.append(loss_fn(out) * corner.weight)
-                antithetic_losses.append(torch.stack(pert_corner_losses).sum())
-            else:
-                out = forward_fn(perturbed)
-                antithetic_losses.append(loss_fn(out))
+        # Batched path: single forward call with stacked perturbed designs (no corners).
+        if batched and not corners:
+            perturbed_batch = design.unsqueeze(0) + deltas  # (n_pairs, *design.shape)
+            batch_output = forward_fn(perturbed_batch)  # (n_pairs, ...)
+            batch_losses = torch.stack([loss_fn(batch_output[i]) for i in range(antithetic_config.n_pairs)])
+            avg_antithetic = batch_losses.mean()
+        else:
+            antithetic_losses: list[Tensor] = []
+            for i in range(antithetic_config.n_pairs):
+                perturbed = design + deltas[i]
+                if corners:
+                    pert_corner_losses: list[Tensor] = []
+                    for corner in corners:
+                        out = forward_fn(perturbed, **corner.params)
+                        pert_corner_losses.append(loss_fn(out) * corner.weight)
+                    antithetic_losses.append(torch.stack(pert_corner_losses).sum())
+                else:
+                    out = forward_fn(perturbed)
+                    antithetic_losses.append(loss_fn(out))
 
-        avg_antithetic = torch.stack(antithetic_losses).mean()
+            avg_antithetic = torch.stack(antithetic_losses).mean()
+
         total_loss = (nominal_loss + avg_antithetic) / 2.0
     else:
         total_loss = nominal_loss
@@ -150,10 +162,12 @@ def robust_design_step(
             return grad.clone().masked_fill_(frozen, 0.0)
 
         if design.requires_grad:
-            design.register_hook(_mask_grad)
+            if not hasattr(design, '_diffsurr_mask_handle'):
+                design._diffsurr_mask_handle = design.register_hook(_mask_grad)
 
     # --- 4. Convergence monitoring ---
+    action = ConvergenceAction.CONTINUE
     if convergence_monitor is not None:
         action = convergence_monitor.update(total_loss.item(), step)
 
-    return total_loss
+    return total_loss, action
