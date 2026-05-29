@@ -1,6 +1,6 @@
 # diff-surrogate
 
-Unified differentiable surrogate framework for physics simulations. Shared library used by DiffCFD, DiffNano, OpenLithoHub, and sCO2-TMSR-Toolkit.
+Unified differentiable surrogate framework for physics simulations. Shared library used by DiffCFD, DiffNano, and OpenLithoHub.
 
 ## Installation
 
@@ -21,7 +21,7 @@ Requires Python >= 3.10 and PyTorch >= 2.0.
 For predicting scalar properties from inputs (e.g., T,P -> density, enthalpy):
 
 ```python
-from diff_surrogate import MLPSurrogate, CorrectionPolicy
+from diff_surrogate import MLPSurrogate, Constraint, CorrectionPolicy
 
 # Create surrogate with physics constraints
 surrogate = MLPSurrogate(
@@ -29,7 +29,7 @@ surrogate = MLPSurrogate(
     properties=["density", "enthalpy", "cp"],      # outputs to predict
     hidden=64,
     n_layers=3,
-    constrained={"density": "monotone", "cp": "positive"},
+    constrained={"density": Constraint.MONOTONE, "cp": Constraint.POSITIVE},
     correction_policy=CorrectionPolicy(correction_interval=20, warmup_steps=5),
 )
 
@@ -136,7 +136,7 @@ Compose mask + antithetic sampling + multi-corner evaluation:
 ```python
 from diff_surrogate import robust_design_step, AntitheticConfig, CornerSpec
 
-loss, action, mask_handle = robust_design_step(
+loss, action = robust_design_step(
     design=my_design,
     forward_fn=my_solver,
     loss_fn=my_loss,
@@ -206,10 +206,9 @@ Supporting:
 
 | Project | Surrogate Type | Usage |
 |----------|---------------|-------|
-| DiffCFD | CNNSurrogate | SIMPLE velocity/pressure field prediction |
-| DiffNano | CNNSurrogate | RCWA diffraction efficiency acceleration |
-| OpenLithoHub | CNNSurrogate | CNN aerial image for ILT |
-| sCO2-TMSR-Toolkit | MLPSurrogate | CoolProp thermodynamic properties |
+| DiffCFD | CorrectionPolicy, ConvergenceMonitor | SIMPLE solver correction and convergence |
+| DiffNano | CorrectionPolicy, SurrogateStats | RCWA solver correction |
+| OpenLithoHub | CorrectionPolicy, ConvergenceMonitor | ILT correction and convergence |
 
 ## License
 
