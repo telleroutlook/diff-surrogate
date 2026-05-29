@@ -142,7 +142,8 @@ def optimize_multifidelity(
                 # "differentiable": current behaviour, loss.backward() flows through truth_fn.
                 output = truth_fn(design)
                 if cfg.calibration_fn is not None:
-                    cfg.calibration_fn(surrogate_fn, design, output)
+                    with torch.no_grad():
+                        cfg.calibration_fn(surrogate_fn, design, output)
         else:
             output = surrogate_fn(design)
 

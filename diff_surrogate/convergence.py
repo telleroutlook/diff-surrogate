@@ -45,6 +45,7 @@ class ConvergenceConfig:
         reduce_lr_threshold: Reduce learning rate when |Z_hybrid| < this value.
         min_steps: Minimum steps before any convergence action is taken.
         patience: Number of consecutive reduce-lr signals before early stop.
+        cooldown_steps: Steps to wait after a REDUCE_LR before acting again.
     """
 
     window: int = 20
@@ -53,6 +54,7 @@ class ConvergenceConfig:
     reduce_lr_threshold: float = 0.2
     min_steps: int = 10
     patience: int = 5
+    cooldown_steps: int = 3
 
     def __post_init__(self):
         if self.window < 2:
@@ -125,6 +127,7 @@ class ConvergenceMonitor:
         self._config = config or ConvergenceConfig()
         self._history: deque[float] = deque(maxlen=self._config.window * 2)
         self._reduce_lr_count: int = 0
+        self._cooldown_remaining: int = 0
 
     @property
     def config(self) -> ConvergenceConfig:
@@ -148,6 +151,10 @@ class ConvergenceMonitor:
         """
         self._history.append(loss)
 
+        if self._cooldown_remaining > 0:
+            self._cooldown_remaining -= 1
+            return ConvergenceAction.CONTINUE
+
         if step < self._config.min_steps:
             return ConvergenceAction.CONTINUE
 
@@ -159,12 +166,12 @@ class ConvergenceMonitor:
         z = hybrid_z_score(window, weight=self._config.hybrid_weight)
         abs_z = abs(z)
 
-        # Stagnant loss (std + mad == 0) — cannot distinguish true convergence from stagnation.
+        # Stagnant loss (std + mad == 0) — loss is constant, stop early.
         arr = np.asarray(window, dtype=np.float64)
         window_std = float(np.std(arr, ddof=1)) if len(arr) >= 2 else 0.0
         window_mad = float(np.median(np.abs(arr - np.median(arr))))
         if window_std + window_mad == 0:
-            return ConvergenceAction.CONTINUE
+            return ConvergenceAction.EARLY_STOP
 
         if abs_z < self._config.early_stop_threshold:
             self._reduce_lr_count = 0
@@ -175,6 +182,7 @@ class ConvergenceMonitor:
             if self._reduce_lr_count >= self._config.patience:
                 self._reduce_lr_count = 0
                 return ConvergenceAction.EARLY_STOP
+            self._cooldown_remaining = self._config.cooldown_steps
             return ConvergenceAction.REDUCE_LR
 
         # Loss is still changing meaningfully — reset patience counter

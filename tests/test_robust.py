@@ -28,13 +28,12 @@ def test_convergence_no_early_stop_with_insufficient_data():
         )
 
 
-def test_convergence_continues_with_stagnant_loss():
+def test_convergence_stagnant_loss_triggers_early_stop():
     m = ConvergenceMonitor(ConvergenceConfig(window=20, min_steps=5))
-    # Constant loss should not trigger early stop
-    for i in range(30):
+    # Constant loss should trigger early stop once the window is full
+    for i in range(25):
         action = m.update(0.5, i)
-        if i < 20:
-            assert action != ConvergenceAction.EARLY_STOP
+    assert action == ConvergenceAction.EARLY_STOP
 
 
 def test_robust_design_step_no_hook_leak():

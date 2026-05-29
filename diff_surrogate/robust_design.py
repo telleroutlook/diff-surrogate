@@ -172,10 +172,12 @@ def robust_design_step(
 
         # Batched path: single forward call with stacked perturbed designs (no corners).
         if batched and not corners:
-            perturbed_batch = eff_design.unsqueeze(0) + deltas
-            batch_output = forward_fn(perturbed_batch)
+            perturbed_batch = eff_design.unsqueeze(0) + deltas  # (N, *design.shape)
+            n_pairs = perturbed_batch.shape[0]
+            flat_batch = perturbed_batch.reshape(n_pairs, *eff_design.shape)
+            flat_output = forward_fn(flat_batch)
             batch_losses = torch.stack(
-                [loss_fn(batch_output[i]) for i in range(antithetic_config.n_pairs)]
+                [loss_fn(flat_output[i]) for i in range(n_pairs)]
             )
             avg_antithetic = batch_losses.mean()
         else:

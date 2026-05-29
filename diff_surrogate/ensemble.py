@@ -216,6 +216,9 @@ class EnsembleSurrogate(SurrogateBase):
                 if isinstance(true_output, dict):
                     for k, v in true_output.items():
                         merged[k] = v.to(self.device)
+                else:
+                    if "output" in merged:
+                        merged["output"] = true_output.to(self.device)
                 return merged, action
             return surrogate_output, action
 

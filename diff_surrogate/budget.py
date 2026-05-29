@@ -34,7 +34,10 @@ class TrainingBudget:
         }
         total_w = sum(weights.values())
         share = remaining * weights[region] / total_w
-        return min(int(share), remaining)
+        allocated = int(share)
+        if allocated == 0 and remaining > 0:
+            allocated = 1
+        return min(allocated, remaining)
 
     def record_accuracy(self, region: int, mse: float):
         self._accuracy_per_region[region] = mse

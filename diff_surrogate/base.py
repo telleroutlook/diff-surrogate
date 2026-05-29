@@ -190,10 +190,9 @@ class SurrogateBase(ABC, nn.Module):
         return self._network
 
     def _apply(self, fn):
+        dummy = torch.empty(0, device=self.device)
+        self.device = fn(dummy).device
         result = super()._apply(fn)
-        for t in list(self.parameters()) + list(self.buffers()):
-            self.device = torch.device(t.device)
-            break
         return result
 
     def train_surrogate(
@@ -204,43 +203,17 @@ class SurrogateBase(ABC, nn.Module):
         batch_size: int = 32,
         loss_weights: dict[str, float] | None = None,
     ) -> list[float]:
-        net = self.get_network()
-        optimizer = self._ensure_optimizer(lr)
-        criterion = nn.MSELoss()
+        from .trainer import SurrogateTrainer
 
-        inputs, targets = self.generate_training_data(n_samples)
-        inputs = inputs.to(self.device)
-        if isinstance(targets, dict):
-            targets = {k: v.to(self.device) for k, v in targets.items()}
-        else:
-            targets = targets.to(self.device)
-
-        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
-
-        losses = []
-        for _epoch in range(n_epochs):
-            epoch_loss = torch.zeros((), device=self.device)
-            net.train()
-            for batch in loader:
-                batch_x = batch[0]
-                optimizer.zero_grad()
-                output = self(batch_x)
-                if target_keys is not None:
-                    loss = sum(
-                        (loss_weights.get(k, 1.0) if loss_weights else 1.0)
-                        * criterion(output[k], batch[i + 1])
-                        for i, k in enumerate(target_keys)
-                    )
-                else:
-                    loss = criterion(output, batch[1])
-                loss.backward()
-                optimizer.step()
-                epoch_loss = epoch_loss + loss.detach()
-            avg_loss = (epoch_loss / len(loader)).item()
-            losses.append(avg_loss)
-
+        self._ensure_optimizer(lr)
+        trainer = SurrogateTrainer(self, lr=lr)
+        losses = trainer.train(
+            n_epochs=n_epochs,
+            n_samples=n_samples,
+            batch_size=batch_size,
+            loss_weights=loss_weights,
+        )
         self._trained = True
-        self.stats.train_losses.extend(losses)
         return losses
 
     def _ensure_optimizer(self, lr: float, weight_decay: float = 0.0) -> torch.optim.Optimizer:
@@ -248,6 +221,9 @@ class SurrogateBase(ABC, nn.Module):
             self._optimizer = torch.optim.Adam(
                 self.get_network().parameters(), lr=lr, weight_decay=weight_decay
             )
+        else:
+            for pg in self._optimizer.param_groups:
+                pg["lr"] = lr
         return self._optimizer
 
     def predict(self, x: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]:
@@ -291,11 +267,14 @@ class SurrogateBase(ABC, nn.Module):
                 surrogate_output = self(x.to(self.device))
                 # Handle both Tensor and dict[str, Tensor] outputs
                 if isinstance(surrogate_output, dict):
+                    matched_keys = [k for k in surrogate_output if k in true_output]
                     error = sum(
-                        torch.mean((true_output[k].to(v.device) - v) ** 2).item()
-                        for k, v in surrogate_output.items()
-                        if k in true_output
-                    ) / max(1, len(surrogate_output))
+                        torch.mean(
+                            (true_output[k].to(surrogate_output[k].device)
+                             - surrogate_output[k]) ** 2
+                        ).item()
+                        for k in matched_keys
+                    ) / max(1, len(matched_keys))
                 else:
                     error = torch.mean(
                         (true_output.to(surrogate_output.device) - surrogate_output) ** 2
