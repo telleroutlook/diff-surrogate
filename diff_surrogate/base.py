@@ -1,5 +1,7 @@
 """Abstract base for differentiable physics surrogates with correction lifecycle."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum

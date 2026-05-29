@@ -1,5 +1,7 @@
 """CNN-based surrogate for 2D field prediction (velocity, pressure, aerial image, etc.)."""
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 
