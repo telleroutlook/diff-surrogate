@@ -43,7 +43,11 @@ class MultiFidelityConfig:
     correction_interval: int = 20
     calibration_fn: Callable | None = None
     log_interval: int = 25
-    truth_mode: str = "surrogate_grad"  # "differentiable" | "surrogate_grad" | "calibration_only"
+    truth_mode: TruthMode | str = TruthMode.SURROGATE_GRAD
+
+    def __post_init__(self):
+        if isinstance(self.truth_mode, str):
+            self.truth_mode = TruthMode(self.truth_mode)
 
 
 @dataclass
@@ -118,8 +122,7 @@ def optimize_multifidelity(
         if use_truth:
             truth_steps.append(step)
 
-            mode = cfg.truth_mode.value if isinstance(cfg.truth_mode, TruthMode) else cfg.truth_mode
-            if mode == "surrogate_grad":
+            if cfg.truth_mode == TruthMode.SURROGATE_GRAD:
                 # Straight-through estimator: use truth output detached, but pass
                 # gradients through the surrogate so the optimizer still gets a signal.
                 with torch.no_grad():
@@ -128,7 +131,7 @@ def optimize_multifidelity(
                 if cfg.calibration_fn is not None:
                     cfg.calibration_fn(surrogate_fn, design, truth_output)
                 output = truth_output + (surrogate_output - surrogate_output.detach())
-            elif mode == "calibration_only":
+            elif cfg.truth_mode == TruthMode.CALIBRATION_ONLY:
                 # Truth output is only used for calibration — loss uses surrogate.
                 with torch.no_grad():
                     truth_output = truth_fn(design)

@@ -77,7 +77,7 @@ class EnsembleSurrogate(SurrogateBase):
                 self.correction_policy.update_uncertainty(mean_std)
         return result
 
-    def train_surrogate(
+    def train_members(
         self,
         n_samples: int = 256,
         n_epochs: int = 10,
@@ -92,8 +92,11 @@ class EnsembleSurrogate(SurrogateBase):
                 If False (default), all members train on the same shared dataset.
         """
         shared_inputs, shared_targets = self.generate_training_data(n_samples)
-        all_losses = []
-        for member in self._members:
+        all_losses: list[list[float]] = []
+        for m in self._members:
+            member: SurrogateBase = m  # type: ignore[assignment]
+            inputs: torch.Tensor
+            targets: torch.Tensor | dict[str, torch.Tensor]
             if bootstrap:
                 n = shared_inputs.shape[0]
                 idx = torch.randint(0, n, (n,), device=shared_inputs.device)
@@ -106,16 +109,32 @@ class EnsembleSurrogate(SurrogateBase):
                 inputs = shared_inputs
                 targets = shared_targets
             # Override data generator to use shared data, then train
-            original_gen = getattr(member, "_data_generator", None)
-            member._data_generator = lambda _n, _i=inputs, _t=targets: (_i, _t)
-            losses = member.train_surrogate(n_samples=n_samples, n_epochs=n_epochs, lr=lr)
-            if original_gen is not None:
-                member._data_generator = original_gen
-            elif hasattr(member, "_data_generator"):
-                member._data_generator = None
+            original_gen = member._data_generator  # type: ignore[attr-defined]
+            member._data_generator = lambda _n, _i=inputs, _t=targets: (_i, _t)  # type: ignore[assignment,operator]
+            losses = member.train_surrogate(n_samples=n_samples, n_epochs=n_epochs, lr=lr)  # type: ignore[union-attr]
+            member._data_generator = original_gen  # type: ignore[assignment]
             all_losses.append(losses)
         self._trained = True
         return all_losses
+
+    def train_surrogate(
+        self,
+        n_samples: int = 256,
+        n_epochs: int = 10,
+        lr: float = 1e-3,
+        batch_size: int = 32,
+        loss_weights: dict[str, float] | None = None,
+        **kwargs: bool,
+    ) -> list[float]:
+        """Train ensemble members. Returns flattened loss list for base-class compat."""
+        all_losses = self.train_members(
+            n_samples=n_samples,
+            n_epochs=n_epochs,
+            lr=lr,
+            batch_size=batch_size,
+            **kwargs,
+        )
+        return [loss for member_losses in all_losses for loss in member_losses]
 
     def predict_with_uncertainty(
         self, x: torch.Tensor
@@ -132,13 +151,16 @@ class EnsembleSurrogate(SurrogateBase):
                 means[key] = out[key]
         return means, stds
 
-    def generate_training_data(self, n_samples: int) -> tuple:
-        return self._members[0].generate_training_data(n_samples)
+    def generate_training_data(
+        self, n_samples: int
+    ) -> tuple[torch.Tensor, torch.Tensor | dict[str, torch.Tensor]]:
+        return self._members[0].generate_training_data(n_samples)  # type: ignore[operator]
 
     def predict_with_correction(
         self,
         x: torch.Tensor,
         true_solver_fn: Callable | None = None,
+        step: int | None = None,
     ) -> tuple[dict[str, torch.Tensor], CorrectionAction]:
         """Predict with correction, preserving uncertainty keys for ensemble output.
 
@@ -146,7 +168,10 @@ class EnsembleSurrogate(SurrogateBase):
         the ensemble mean (excluding _std keys). The returned dict still contains
         the ensemble uncertainty estimates alongside the true values.
         """
-        self._step += 1
+        if step is not None:
+            self._step = step
+        else:
+            self._step += 1
         action = CorrectionAction.CONTINUE
         if true_solver_fn is not None and self.correction_policy.should_correct(self._step):
             action = CorrectionAction.CORRECT
@@ -158,7 +183,7 @@ class EnsembleSurrogate(SurrogateBase):
             # Compute error against mean predictions only (skip _std keys)
             if isinstance(surrogate_output, dict) and isinstance(true_output, dict):
                 error = sum(
-                    torch.mean((true_output.get(k, v).to(v.device) - v) ** 2).item()
+                    torch.mean((true_output[k].to(v.device) - v) ** 2).item()  # type: ignore[union-attr]
                     for k, v in surrogate_output.items()
                     if not k.endswith("_std") and k in true_output
                 ) / max(
@@ -174,6 +199,14 @@ class EnsembleSurrogate(SurrogateBase):
             self.stats.correction_errors.append(error)
             if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
                 self.correction_policy.update_error(error)
+                std_vals = [
+                    v
+                    for k, v in surrogate_output.items()
+                    if isinstance(v, torch.Tensor) and k.endswith("_std")
+                ]
+                if std_vals:
+                    mean_std = torch.stack([s.mean() for s in std_vals]).mean().item()
+                    self.correction_policy.update_uncertainty(mean_std)
             if was_training:
                 self.train()
             self.stats.total_corrections += 1
@@ -186,7 +219,10 @@ class EnsembleSurrogate(SurrogateBase):
                 return merged, action
             return surrogate_output, action
 
-        return self.predict(x), action
+        result = self.predict(x)
+        # predict() already calls update_uncertainty, but if it didn't trigger
+        # (non-adaptive policy), we still want to update for adaptive ones.
+        return result, action
 
     def get_members(self) -> nn.ModuleList:
         return self._members

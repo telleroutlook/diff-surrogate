@@ -54,6 +54,10 @@ class ConvergenceConfig:
     min_steps: int = 10
     patience: int = 5
 
+    def __post_init__(self):
+        if self.window < 2:
+            raise ValueError(f"window must be >= 2, got {self.window}")
+
 
 def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     """Compute hybrid z-score blending standard and robust (MAD-based) z-scores.
@@ -80,15 +84,18 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
         return 0.0
 
     # Constant sequence cannot produce a meaningful z-score.
-    if min(values) == max(values):
+    if min(finite) == max(finite):
         return 0.0
 
-    current = values[-1]
-    arr = np.asarray(values[:-1], dtype=np.float64)
+    current = finite[-1]
+    arr = np.asarray(finite[:-1], dtype=np.float64)
 
     mean_val = float(np.mean(arr))
     std_dev = float(np.std(arr, ddof=1))
-    z_standard = (current - mean_val) / std_dev if std_dev > 0 else 0.0
+    if not math.isfinite(std_dev) or std_dev <= 0:
+        z_standard = 0.0
+    else:
+        z_standard = (current - mean_val) / std_dev
 
     med = float(np.median(arr))
     mad_val = float(np.median(np.abs(arr - med)))

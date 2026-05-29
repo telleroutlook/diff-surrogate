@@ -24,6 +24,8 @@ class CorrectionPolicy:
     warmup_steps: int = 0
 
     def should_correct(self, step: int) -> bool:
+        if step < 1:
+            return False
         if step < self.warmup_steps:
             return False
         if self.correction_interval <= 0:
@@ -165,6 +167,7 @@ class SurrogateBase(ABC, nn.Module):
         self._network: nn.Module | None = None
         self._trained = False
         self._step = 0
+        self._optimizer: torch.optim.Optimizer | None = None
 
     @property
     def trained(self) -> bool:
@@ -177,7 +180,9 @@ class SurrogateBase(ABC, nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]: ...
 
     @abstractmethod
-    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]: ...
+    def generate_training_data(
+        self, n_samples: int
+    ) -> tuple[torch.Tensor, torch.Tensor | dict[str, torch.Tensor]]: ...
 
     def get_network(self) -> nn.Module:
         if self._network is None:
@@ -186,10 +191,9 @@ class SurrogateBase(ABC, nn.Module):
 
     def _apply(self, fn):
         result = super()._apply(fn)
-        for p in self.parameters():
-            if hasattr(p, "device"):
-                self.device = torch.device(p.device)
-                break
+        for t in list(self.parameters()) + list(self.buffers()):
+            self.device = torch.device(t.device)
+            break
         return result
 
     def train_surrogate(
@@ -260,14 +264,23 @@ class SurrogateBase(ABC, nn.Module):
         self,
         x: torch.Tensor,
         true_solver_fn: Callable | None = None,
+        step: int | None = None,
     ) -> tuple[Any, CorrectionAction]:
         """Predict with periodic ground-truth correction.
 
         When the correction policy triggers, the true solver output replaces
         the surrogate prediction (i.e. the returned value IS the correction)
         and the error is recorded for adaptive policy adjustment.
+
+        Args:
+            x: Input tensor.
+            true_solver_fn: Optional ground-truth callable.
+            step: External step counter. If provided, overrides internal counter.
         """
-        self._step += 1
+        if step is not None:
+            self._step = step
+        else:
+            self._step += 1
         action = CorrectionAction.CONTINUE
         if true_solver_fn is not None and self.correction_policy.should_correct(self._step):
             action = CorrectionAction.CORRECT
@@ -303,28 +316,33 @@ class SurrogateBase(ABC, nn.Module):
         true_solver_fn: Callable | None = None,
     ) -> dict[str, float]:
         inputs, targets = self.generate_training_data(n_samples)
+        inputs = inputs.to(self.device)
         if true_solver_fn is not None:
             with torch.no_grad():
                 targets = true_solver_fn(inputs)
+        if isinstance(targets, dict):
+            targets = {k: v.to(self.device) for k, v in targets.items()}
+        else:
+            targets = targets.to(self.device)
         self.eval()
         with torch.no_grad():
-            preds = self(inputs.to(self.device))
+            preds = self(inputs)
         if isinstance(preds, dict):
             total_mse = 0.0
             n_props = 0
             for key, pred_val in preds.items():
                 if isinstance(targets, dict) and key in targets:
-                    total_mse += torch.mean((pred_val - targets[key].to(self.device)) ** 2).item()
+                    total_mse += torch.mean((pred_val - targets[key]) ** 2).item()
                     n_props += 1
             mse = total_mse / max(1, n_props)
         else:
-            mse = torch.mean((preds - targets.to(self.device)) ** 2).item()
+            mse = torch.mean((preds - targets) ** 2).item()
         return {"mse": mse, "rmse": mse**0.5}
 
     def save_checkpoint(self, path: str, optimizer: Any | None = None):
         """Save state: network, stats, step, optimizer, correction policy, RNG."""
         checkpoint: dict[str, Any] = {
-            "__format__": 1,
+            "__format__": 2,
             "network_state_dict": self.get_network().state_dict(),
             "stats": {
                 "train_losses": list(self.stats.train_losses),
@@ -339,8 +357,14 @@ class SurrogateBase(ABC, nn.Module):
         }
         if optimizer is not None:
             checkpoint["optimizer_state_dict"] = optimizer.state_dict()
+            checkpoint["optimizer_class"] = type(optimizer).__name__
+            checkpoint["optimizer_lr"] = optimizer.defaults.get("lr", 1e-3)
+            checkpoint["optimizer_weight_decay"] = optimizer.defaults.get("weight_decay", 0.0)
         elif hasattr(self, "_optimizer") and self._optimizer is not None:
             checkpoint["optimizer_state_dict"] = self._optimizer.state_dict()
+            checkpoint["optimizer_class"] = type(self._optimizer).__name__
+            checkpoint["optimizer_lr"] = self._optimizer.defaults.get("lr", 1e-3)
+            checkpoint["optimizer_weight_decay"] = self._optimizer.defaults.get("weight_decay", 0.0)
         if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
             checkpoint["correction_policy"] = {
                 "_current_interval": self.correction_policy._current_interval,
@@ -363,9 +387,14 @@ class SurrogateBase(ABC, nn.Module):
         """Restore network state, stats, step count, and all saved state from a file."""
         checkpoint = torch.load(path, map_location=self.device, weights_only=weights_only)
         fmt = checkpoint.get("__format__", 0)
-        if fmt != 1:
+        if fmt > 2:
             raise ValueError(
-                f"Unsupported checkpoint format {fmt}; expected 1. "
+                f"Unsupported checkpoint format {fmt}; expected <= 2. "
+                "You may need to update diff-surrogate."
+            )
+        if fmt < 1:
+            raise ValueError(
+                f"Unsupported checkpoint format {fmt}. "
                 "You may need to re-train or convert the checkpoint."
             )
         self.get_network().load_state_dict(checkpoint["network_state_dict"])
@@ -398,7 +427,13 @@ class SurrogateBase(ABC, nn.Module):
             if torch.cuda.is_available() and "cuda" in rng:
                 torch.cuda.set_rng_state_all(rng["cuda"])
         if "optimizer_state_dict" in checkpoint:
-            self._optimizer = torch.optim.Adam(self.get_network().parameters(), lr=1e-3)
+            opt_cls_name = checkpoint.get("optimizer_class", "Adam")
+            opt_lr = checkpoint.get("optimizer_lr", 1e-3)
+            opt_wd = checkpoint.get("optimizer_weight_decay", 0.0)
+            opt_cls = getattr(torch.optim, opt_cls_name, torch.optim.Adam)
+            self._optimizer = opt_cls(
+                self.get_network().parameters(), lr=opt_lr, weight_decay=opt_wd
+            )
             self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
             self._optimizer = None

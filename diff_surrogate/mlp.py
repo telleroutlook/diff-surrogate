@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
+from enum import Enum
 
 import torch
 import torch.nn as nn
 
 from .base import CorrectionPolicy, SurrogateBase
+
+
+class Constraint(Enum):
+    """Physics constraint for an MLP output head."""
+
+    NONE = "none"
+    MONOTONE = "monotone"
+    POSITIVE = "positive"
 
 
 class MonotoneLinear(nn.Module):
@@ -77,7 +87,7 @@ class MonotoneMLP(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        signed = x * self._signs
+        signed = x * self._signs.to(x.device)  # type: ignore[operator]
         return self.net(signed)
 
 
@@ -109,9 +119,9 @@ class MLPSurrogate(SurrogateBase):
         properties: list[str] | None = None,
         hidden: int = 64,
         n_layers: int = 3,
-        constrained: dict[str, str] | None = None,
+        constrained: dict[str, Constraint] | None = None,
         correction_policy: CorrectionPolicy | None = None,
-        device: str = "cpu",
+        device: str | torch.device | int = "cpu",
         data_generator: Callable | None = None,
         shared_trunk: bool = False,
     ):
@@ -122,6 +132,14 @@ class MLPSurrogate(SurrogateBase):
         self.constrained = constrained or {}
         self._data_generator = data_generator
         self.shared_trunk = shared_trunk
+        if shared_trunk and self.constrained:
+            warnings.warn(
+                "shared_trunk=True ignores constrained settings; "
+                "per-property constraints require independent heads.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self.constrained = {}
         if n_inputs < 1:
             raise ValueError(f"n_inputs must be >= 1, got {n_inputs}")
         if n_layers < 2:
@@ -143,10 +161,10 @@ class MLPSurrogate(SurrogateBase):
             return nn.ModuleDict(nets)
 
         for prop in self.properties:
-            constraint = self.constrained.get(prop, "none")
-            if constraint == "monotone":
+            constraint = self.constrained.get(prop, Constraint.NONE)
+            if constraint == Constraint.MONOTONE:
                 nets[prop] = MonotoneMLP(self.n_inputs, self.hidden, self.n_layers)
-            elif constraint == "positive":
+            elif constraint == Constraint.POSITIVE:
                 nets[prop] = PositiveOutputMLP(self.n_inputs, self.hidden, self.n_layers)
             else:
                 layers = [nn.Linear(self.n_inputs, self.hidden), nn.ReLU()]
@@ -160,12 +178,16 @@ class MLPSurrogate(SurrogateBase):
         if x.ndim == 1:
             x = x.unsqueeze(0)
         net = self.get_network()
+        assert isinstance(net, nn.ModuleDict)
         if self.shared_trunk:
-            features = net["trunk"](x)
+            trunk = net["trunk"]
+            features = trunk(x)
             return {prop: net[f"head_{prop}"](features)[..., 0] for prop in self.properties}
         return {prop: module(x)[..., 0] for prop, module in net.items()}
 
-    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def generate_training_data(
+        self, n_samples: int
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         if self._data_generator is not None:
             return self._data_generator(n_samples)
         inputs = torch.randn(n_samples, self.n_inputs)

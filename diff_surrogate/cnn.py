@@ -43,7 +43,7 @@ class CNNSurrogate(SurrogateBase):
         n_layers: int = 4,
         grid_size: int = 64,
         correction_policy: CorrectionPolicy | None = None,
-        device: str = "cpu",
+        device: str | torch.device | int = "cpu",
         data_generator: Callable | None = None,
     ):
         self.in_channels = in_channels

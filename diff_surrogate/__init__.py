@@ -16,7 +16,7 @@ from .convergence import (
     hybrid_z_score,
 )
 from .ensemble import EnsembleSurrogate
-from .mlp import MLPSurrogate, MonotoneMLP, PositiveOutputMLP
+from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
@@ -34,6 +34,7 @@ __all__ = [
     "AdaptiveCorrectionPolicy",
     "AntitheticConfig",
     "CNNSurrogate",
+    "Constraint",
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",

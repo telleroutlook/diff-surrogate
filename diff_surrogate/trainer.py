@@ -39,6 +39,7 @@ class SurrogateTrainer:
                 lr=lr,
                 weight_decay=weight_decay,
             )
+        self.scheduler: torch.optim.lr_scheduler.LRScheduler | None
         if scheduler == "cosine":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer, **(scheduler_kwargs or {"T_max": 100})

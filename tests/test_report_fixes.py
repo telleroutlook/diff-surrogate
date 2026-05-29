@@ -214,7 +214,7 @@ def test_ensemble_trains_each_member():
         base_factory=lambda: MLPSurrogate(n_inputs=2, properties=["val"]),
         n_members=3,
     )
-    all_losses = ens.train_surrogate(n_samples=16, n_epochs=2)
+    all_losses = ens.train_members(n_samples=16, n_epochs=2)
     assert len(all_losses) == 3
     for losses in all_losses:
         assert len(losses) == 2
@@ -399,7 +399,7 @@ def test_checkpoint_format_version(tmp_path):
     path = str(tmp_path / "ckpt.pt")
     s.save_checkpoint(path)
     ckpt = torch.load(path, weights_only=True)
-    assert ckpt["__format__"] == 1
+    assert ckpt["__format__"] == 2
 
 
 # --- §5.1 Optimizer state roundtrip ---
