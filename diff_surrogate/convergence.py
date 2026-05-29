@@ -17,10 +17,11 @@ outlier resistance.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
+
+import numpy as np
 
 
 class ConvergenceAction(Enum):
@@ -54,37 +55,30 @@ class ConvergenceConfig:
 
 def _median(values: list[float]) -> float:
     """Compute median of a list of floats."""
-    n = len(values)
-    if n == 0:
+    if not values:
         return 0.0
-    sorted_v = sorted(values)
-    mid = n // 2
-    if n % 2 == 1:
-        return sorted_v[mid]
-    return (sorted_v[mid - 1] + sorted_v[mid]) / 2.0
+    return float(np.median(values))
 
 
 def _mean(values: list[float]) -> float:
     """Compute mean of a list of floats."""
     if not values:
         return 0.0
-    return sum(values) / len(values)
+    return float(np.mean(values))
 
 
 def _std(values: list[float]) -> float:
-    """Compute sample standard deviation (Bessel-corrected, n-1) of a list of floats."""
+    """Compute sample standard deviation (Bessel-corrected, ddof=1) of a list of floats."""
     if len(values) < 2:
         return 0.0
-    m = _mean(values)
-    return math.sqrt(sum((v - m) ** 2 for v in values) / (len(values) - 1))
+    return float(np.std(values, ddof=1))
 
 
 def _mad(values: list[float]) -> float:
     """Compute median absolute deviation of a list of floats."""
     if not values:
         return 0.0
-    med = _median(values)
-    return _median([abs(v - med) for v in values])
+    return float(np.median(np.abs(np.array(values) - np.median(values))))
 
 
 def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:

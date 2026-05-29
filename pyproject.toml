@@ -21,6 +21,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
 ]
+
+[project.urls]
+Repository = "https://github.com/telleroutlook/diff-surrogate"
+
 dependencies = [
     "torch>=2.0,<3.0",
     "numpy",

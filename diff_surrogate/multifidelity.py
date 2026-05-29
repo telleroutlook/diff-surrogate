@@ -47,6 +47,8 @@ class MultiFidelityResult:
     truth_steps: list[int]  # indices where truth was evaluated
     converged: bool
     final_step: int
+    best_design: Tensor | None = None
+    best_loss: float | None = None
 
 
 def optimize_multifidelity(
@@ -94,6 +96,8 @@ def optimize_multifidelity(
     truth_steps: list[int] = []
     converged = False
     final_step = n_steps - 1
+    best_design = design.detach().clone()
+    best_loss = float("inf")
 
     for step in range(n_steps):
         optimizer.zero_grad()
@@ -137,6 +141,9 @@ def optimize_multifidelity(
 
         loss_val = loss.item()
         loss_history.append(loss_val)
+        if loss_val < best_loss:
+            best_loss = loss_val
+            best_design = design.detach().clone()
 
         if cfg.log_interval > 0 and (step + 1) % cfg.log_interval == 0:
             logger.info("[step %4d] loss=%.6f  fidelity=%s", step + 1, loss_val, fidelity)
@@ -158,4 +165,6 @@ def optimize_multifidelity(
         truth_steps=truth_steps,
         converged=converged,
         final_step=final_step,
+        best_design=best_design,
+        best_loss=best_loss,
     )

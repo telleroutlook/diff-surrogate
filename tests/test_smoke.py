@@ -1,14 +1,21 @@
 """Smoke tests for diff-surrogate -- verify all public APIs work."""
+
 import torch
+
 from diff_surrogate import (
-    CorrectionPolicy, CorrectionAction, AdaptiveCorrectionPolicy,
-    CNNSurrogate, MLPSurrogate, EnsembleSurrogate,
-    ConvergenceMonitor, ConvergenceConfig, ConvergenceAction,
-    TrainingBudget, SurrogateTrainer,
+    AdaptiveCorrectionPolicy,
+    CNNSurrogate,
+    ConvergenceAction,
+    ConvergenceConfig,
+    ConvergenceMonitor,
+    CorrectionPolicy,
+    EnsembleSurrogate,
+    MLPSurrogate,
+    SurrogateTrainer,
+    TrainingBudget,
     hybrid_z_score,
 )
-from diff_surrogate.robust_design import robust_design_step, AntitheticConfig, CornerSpec
-from diff_surrogate.multifidelity import optimize_multifidelity
+from diff_surrogate.robust_design import robust_design_step
 
 
 def test_correction_policy():
@@ -44,8 +51,10 @@ def test_cnn_surrogate_predict():
 
 
 def test_ensemble_mlp():
-    factory = lambda: MLPSurrogate(n_inputs=2, properties=["val"])
-    ens = EnsembleSurrogate(base_factory=factory, n_members=3)
+    def _mlp_factory():
+        return MLPSurrogate(n_inputs=2, properties=["val"])
+
+    ens = EnsembleSurrogate(base_factory=_mlp_factory, n_members=3)
     x = torch.randn(4, 2)
     means, stds = ens.predict_with_uncertainty(x)
     assert "val" in means
@@ -53,8 +62,10 @@ def test_ensemble_mlp():
 
 
 def test_ensemble_cnn():
-    factory = lambda: CNNSurrogate(in_channels=1, out_channels=2, grid_size=16)
-    ens = EnsembleSurrogate(base_factory=factory, n_members=3)
+    def _cnn_factory():
+        return CNNSurrogate(in_channels=1, out_channels=2, grid_size=16)
+
+    ens = EnsembleSurrogate(base_factory=_cnn_factory, n_members=3)
     x = torch.randn(2, 1, 16, 16)
     means, stds = ens.predict_with_uncertainty(x)
     assert "output" in means
@@ -65,7 +76,11 @@ def test_convergence_monitor():
     m = ConvergenceMonitor(ConvergenceConfig(window=10, min_steps=5))
     for i in range(20):
         action = m.update(1.0 / (i + 1), i)
-    assert action in (ConvergenceAction.CONTINUE, ConvergenceAction.REDUCE_LR, ConvergenceAction.EARLY_STOP)
+    assert action in (
+        ConvergenceAction.CONTINUE,
+        ConvergenceAction.REDUCE_LR,
+        ConvergenceAction.EARLY_STOP,
+    )
 
 
 def test_convergence_monitor_insufficient_data():
@@ -95,13 +110,15 @@ def test_checkpoint_roundtrip(tmp_path):
 
 
 def test_trainer_smoke():
-    s = MLPSurrogate(n_inputs=2, properties=["val"], data_generator=lambda n: (
-        torch.randn(n, 2), {"val": torch.randn(n)}
-    ))
+    s = MLPSurrogate(
+        n_inputs=2,
+        properties=["val"],
+        data_generator=lambda n: (torch.randn(n, 2), {"val": torch.randn(n)}),
+    )
     trainer = SurrogateTrainer(s, lr=1e-3)
     losses = trainer.train(n_epochs=2, n_samples=16)
     assert len(losses) == 2
-    assert all(isinstance(l, float) for l in losses)
+    assert all(isinstance(loss, float) for loss in losses)
 
 
 def test_hybrid_z_score():
@@ -111,8 +128,9 @@ def test_hybrid_z_score():
 
 def test_robust_design_step():
     design = torch.randn(1, 4, requires_grad=True)
-    loss, action, handle = robust_design_step(
-        design, forward_fn=lambda d: (d ** 2).sum(),
+    loss, action = robust_design_step(
+        design,
+        forward_fn=lambda d: (d**2).sum(),
         loss_fn=lambda o: o.mean(),
     )
     assert loss.requires_grad
@@ -120,4 +138,5 @@ def test_robust_design_step():
 
 def test_correction_action_in_all():
     from diff_surrogate import __all__
+
     assert "CorrectionAction" in __all__

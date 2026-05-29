@@ -1,8 +1,13 @@
 """Tests for fixes from Round 3 optimization report."""
-import torch
-import pytest
-from diff_surrogate.convergence import ConvergenceMonitor, ConvergenceConfig, hybrid_z_score, ConvergenceAction
 
+import pytest
+import torch
+
+from diff_surrogate.convergence import (
+    ConvergenceConfig,
+    ConvergenceMonitor,
+    hybrid_z_score,
+)
 
 # --- 1.1 AdaptiveCorrectionPolicy uses _prev_error_ema in ratio ---
 
@@ -56,8 +61,9 @@ def test_adaptive_correction_shrinks_on_declining_error():
 
 
 def test_std_uses_bessel_correction():
-    from diff_surrogate.convergence import _std
     import math
+
+    from diff_surrogate.convergence import _std
 
     values = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
     # Population std: sqrt(sum((x-mean)^2) / N)
@@ -148,7 +154,7 @@ def test_mlp_squeeze_preserves_batch_dim():
 
 
 def test_batched_corners_warning():
-    from diff_surrogate.robust_design import robust_design_step, AntitheticConfig, CornerSpec
+    from diff_surrogate.robust_design import AntitheticConfig, CornerSpec, robust_design_step
 
     design = torch.randn(1, 4, requires_grad=True)
     with pytest.warns(UserWarning, match="batched=True is ignored"):
@@ -228,7 +234,6 @@ def test_monotone_mlp_non_decreasing():
     x = torch.linspace(0, 1, 20).unsqueeze(1)
     with torch.no_grad():
         out = net(x).squeeze()
-    diffs = out[1:] - out[:-1]
     # At minimum, the output should change (weights aren't all zero)
     assert out.abs().sum() > 0
 
@@ -267,27 +272,32 @@ def test_checkpoint_weights_identical(tmp_path):
 # --- Hook handle cleanup ---
 
 
-def test_robust_design_hook_removable():
+def test_robust_design_mask_zeros_frozen_grads():
     from diff_surrogate.robust_design import robust_design_step
 
     design = torch.randn(1, 4, requires_grad=True)
-    mask = torch.ones(1, 4, dtype=torch.bool)
-    loss, action, handle = robust_design_step(
+    mask = torch.tensor([[True, False, True, False]])
+    loss, action = robust_design_step(
         design,
         forward_fn=lambda d: (d**2).sum(),
         loss_fn=lambda o: o.mean(),
         designable_mask=mask,
     )
-    assert handle is not None
-    # Should be removable without error
-    handle.remove()
+    loss.backward()
+    grad = design.grad
+    assert grad is not None
+    # Frozen pixels (mask=False) should have zero gradient
+    assert grad[0, 1] == 0.0
+    assert grad[0, 3] == 0.0
+    # Designable pixels should have non-zero gradient
+    assert grad[0, 0] != 0.0
+    assert grad[0, 2] != 0.0
 
 
 # --- hybrid_z_score numerical regression ---
 
 
 def test_hybrid_z_score_numerical():
-    import math
 
     values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
     z = hybrid_z_score(values, weight=0.5)
@@ -300,8 +310,8 @@ def test_hybrid_z_score_numerical():
 
 
 def test_trainer_convergence_early_stop():
-    from diff_surrogate.trainer import SurrogateTrainer
     from diff_surrogate.cnn import CNNSurrogate
+    from diff_surrogate.trainer import SurrogateTrainer
 
     monitor = ConvergenceMonitor(
         ConvergenceConfig(window=3, min_steps=2, early_stop_threshold=0.5, patience=2)

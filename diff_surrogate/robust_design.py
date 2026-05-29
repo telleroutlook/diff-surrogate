@@ -34,6 +34,10 @@ class AntitheticConfig:
     n_pairs: int = 4
     perturbation_fn: Callable | None = None
 
+    def __post_init__(self):
+        if self.n_pairs < 1:
+            raise ValueError(f"n_pairs must be >= 1, got {self.n_pairs}")
+
 
 @dataclass
 class CornerSpec:
@@ -47,7 +51,7 @@ class CornerSpec:
 
     label: str
     weight: float = 1.0
-    params: dict = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 def _default_perturbation(design: Tensor, n_pairs: int, std: float = 0.01) -> Tensor:
@@ -82,7 +86,7 @@ def robust_design_step(
     convergence_monitor: ConvergenceMonitor | None = None,
     step: int = 0,
     batched: bool = False,
-) -> tuple[Tensor, ConvergenceAction, Any | None]:
+) -> tuple[Tensor, ConvergenceAction]:
     """Compute robust loss with optional mask, antithetic sampling, and multi-corner evaluation.
 
     The evaluation proceeds in composable layers:
@@ -169,20 +173,17 @@ def robust_design_step(
     else:
         total_loss = nominal_loss
 
-    # --- 3. Designable mask (register gradient hook) ---
-    mask_handle = None
-    if designable_mask is not None:
-        frozen = ~designable_mask
+    # --- 3. Designable mask (zero frozen-pixel gradients) ---
+    if designable_mask is not None and design.requires_grad:
 
         def _mask_grad(grad: Tensor) -> Tensor:
-            return grad.clone().masked_fill_(frozen, 0.0)
+            return torch.where(designable_mask, grad, torch.zeros_like(grad))
 
-        if design.requires_grad:
-            mask_handle = design.register_hook(_mask_grad)
+        design.register_hook(_mask_grad)
 
     # --- 4. Convergence monitoring ---
     action = ConvergenceAction.CONTINUE
     if convergence_monitor is not None:
         action = convergence_monitor.update(total_loss.item(), step)
 
-    return total_loss, action, mask_handle
+    return total_loss, action

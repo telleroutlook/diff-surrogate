@@ -49,14 +49,12 @@ class AdaptiveCorrectionPolicy:
 
     def __post_init__(self):
         self._current_interval: int = self.initial_interval
-        self._step: int = 0
         self._error_ema: float | None = None
         self._prev_error_ema: float | None = None
         self._uncertainty_baseline: float | None = None
         self._uncertainty_suppress_steps: int = 0
 
     def should_correct(self, step: int) -> bool:
-        self._step = step
         return step >= self.warmup_steps and step % self._current_interval == 0
 
     def update_error(self, error: float):
@@ -87,9 +85,13 @@ class AdaptiveCorrectionPolicy:
         If uncertainty exceeds ``growth_threshold`` times the baseline,
         temporarily halve the correction interval.  Otherwise, gradually
         restore the interval by incrementing it back up.
+
+        The baseline is updated via EMA so it adapts to distribution shifts.
         """
         if self._uncertainty_baseline is None:
             self._uncertainty_baseline = avg_uncertainty
+        else:
+            self._uncertainty_baseline = 0.9 * self._uncertainty_baseline + 0.1 * avg_uncertainty
 
         if avg_uncertainty > self.growth_threshold * self._uncertainty_baseline:
             self._current_interval = max(self.min_interval, self._current_interval // 2)
@@ -124,6 +126,13 @@ class SurrogateBase(ABC, nn.Module):
         - forward(x) -> Any
         - generate_training_data(n_samples) -> tuple[Tensor, Tensor]
     """
+
+    def __repr__(self) -> str:
+        cls = type(self).__name__
+        trained = "trained" if self._trained else "untrained"
+        preds = self.stats.total_predictions
+        corrs = self.stats.total_corrections
+        return f"{cls}({trained}, predictions={preds}, corrections={corrs})"
 
     def __init__(
         self,
@@ -191,28 +200,52 @@ class SurrogateBase(ABC, nn.Module):
         self.stats.train_losses.extend(losses)
         return losses
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
+    def predict(self, x: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]:
         self.stats.total_predictions += 1
+        was_training = self.training
+        self.eval()
         with torch.no_grad():
-            return self(x.to(self.device))
+            result = self(x.to(self.device))
+        if was_training:
+            self.train()
+        return result
 
     def predict_with_correction(
         self,
         x: torch.Tensor,
         true_solver_fn: Callable | None = None,
     ) -> tuple[Any, CorrectionAction]:
+        """Predict with periodic ground-truth correction.
+
+        When the correction policy triggers, the true solver output replaces
+        the surrogate prediction (i.e. the returned value IS the correction)
+        and the error is recorded for adaptive policy adjustment.
+        """
         self._step += 1
         action = CorrectionAction.CONTINUE
         if true_solver_fn is not None and self.correction_policy.should_correct(self._step):
             action = CorrectionAction.CORRECT
+            was_training = self.training
+            self.eval()
             with torch.no_grad():
                 true_output = true_solver_fn(x)
-                surrogate_output = self.forward(x.to(self.device))
-                surrogate_output = surrogate_output.to(true_output.device)
-                error = torch.mean((true_output - surrogate_output) ** 2).item()
+                surrogate_output = self(x.to(self.device))
+                # Handle both Tensor and dict[str, Tensor] outputs
+                if isinstance(surrogate_output, dict):
+                    error = sum(
+                        torch.mean((true_output[k].to(v.device) - v) ** 2).item()
+                        for k, v in surrogate_output.items()
+                        if k in true_output
+                    ) / max(1, len(surrogate_output))
+                else:
+                    error = torch.mean(
+                        (true_output.to(surrogate_output.device) - surrogate_output) ** 2
+                    ).item()
                 self.stats.correction_errors.append(error)
                 if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
                     self.correction_policy.update_error(error)
+            if was_training:
+                self.train()
             self.stats.total_corrections += 1
             return true_output, action
 
@@ -227,9 +260,19 @@ class SurrogateBase(ABC, nn.Module):
         if true_solver_fn is not None:
             with torch.no_grad():
                 targets = true_solver_fn(inputs)
+        self.eval()
         with torch.no_grad():
-            preds = self.forward(inputs.to(self.device))
-        mse = torch.mean((preds - targets.to(self.device)) ** 2).item()
+            preds = self(inputs.to(self.device))
+        if isinstance(preds, dict):
+            total_mse = 0.0
+            n_props = 0
+            for key, pred_val in preds.items():
+                if isinstance(targets, dict) and key in targets:
+                    total_mse += torch.mean((pred_val - targets[key].to(self.device)) ** 2).item()
+                    n_props += 1
+            mse = total_mse / max(1, n_props)
+        else:
+            mse = torch.mean((preds - targets.to(self.device)) ** 2).item()
         return {"mse": mse, "rmse": mse**0.5}
 
     def save_checkpoint(self, path: str, optimizer: Any | None = None):
@@ -306,13 +349,30 @@ def _build_dataloader(
     targets: torch.Tensor | dict[str, torch.Tensor],
     batch_size: int = 32,
     shuffle: bool = True,
+    num_workers: int = 0,
+    pin_memory: bool = False,
 ) -> tuple[torch.utils.data.DataLoader, list[str] | None]:
     """Build a DataLoader handling dict or tensor targets."""
     if isinstance(targets, dict):
         dataset = torch.utils.data.TensorDataset(inputs, *targets.values())
         return (
-            torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle),
+            torch.utils.data.DataLoader(
+                dataset,
+                batch_size=batch_size,
+                shuffle=shuffle,
+                num_workers=num_workers,
+                pin_memory=pin_memory,
+            ),
             list(targets.keys()),
         )
     dataset = torch.utils.data.TensorDataset(inputs, targets)
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle), None
+    return (
+        torch.utils.data.DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        ),
+        None,
+    )

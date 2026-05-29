@@ -18,10 +18,32 @@ class MonotoneLinear(nn.Linear):
 
 
 class MonotoneMLP(nn.Module):
-    """MLP with monotonicity constraint via positive weights."""
+    """MLP with monotonicity constraint via positive weights.
 
-    def __init__(self, in_features: int, hidden: int = 64, n_layers: int = 3):
+    Args:
+        in_features: Number of input features.
+        hidden: Hidden layer width.
+        n_layers: Total number of linear layers.
+        monotone_signs: Per-input-dimension sign constraint.
+            +1.0 forces non-decreasing, -1.0 forces non-increasing for that
+            input dimension.  If None, all inputs are constrained to be
+            non-decreasing (all +1.0).
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        hidden: int = 64,
+        n_layers: int = 3,
+        monotone_signs: list[float] | None = None,
+    ):
         super().__init__()
+        self.in_features = in_features
+        if monotone_signs is not None:
+            assert len(monotone_signs) == in_features
+            self.register_buffer("_signs", torch.tensor(monotone_signs).reshape(1, -1))
+        else:
+            self.register_buffer("_signs", torch.ones(1, in_features))
         layers = [MonotoneLinear(in_features, hidden), nn.ReLU()]
         for _ in range(n_layers - 2):
             layers.extend([MonotoneLinear(hidden, hidden), nn.ReLU()])
@@ -29,7 +51,8 @@ class MonotoneMLP(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        signed = x * self._signs
+        return self.net(signed)
 
 
 class PositiveOutputMLP(nn.Module):
@@ -64,6 +87,7 @@ class MLPSurrogate(SurrogateBase):
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
         data_generator: Callable | None = None,
+        shared_trunk: bool = False,
     ):
         self.n_inputs = n_inputs
         self.properties = properties or ["value"]
@@ -71,10 +95,23 @@ class MLPSurrogate(SurrogateBase):
         self.n_layers = n_layers
         self.constrained = constrained or {}
         self._data_generator = data_generator
+        self.shared_trunk = shared_trunk
         super().__init__(correction_policy=correction_policy, device=device)
 
     def _build_network(self) -> nn.ModuleDict:
-        nets = {}
+        nets: dict[str, nn.Module] = {}
+
+        if self.shared_trunk:
+            # Shared trunk: first n_layers-1 layers shared, final layer per-property
+            trunk_depth = max(1, self.n_layers - 1)
+            trunk_layers = [nn.Linear(self.n_inputs, self.hidden), nn.ReLU()]
+            for _ in range(trunk_depth - 1):
+                trunk_layers.extend([nn.Linear(self.hidden, self.hidden), nn.ReLU()])
+            nets["trunk"] = nn.Sequential(*trunk_layers)
+            for prop in self.properties:
+                nets[f"head_{prop}"] = nn.Linear(self.hidden, 1)
+            return nn.ModuleDict(nets)
+
         for prop in self.properties:
             constraint = self.constrained.get(prop, "none")
             if constraint == "monotone":
@@ -91,12 +128,20 @@ class MLPSurrogate(SurrogateBase):
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         net = self.get_network()
+        if self.shared_trunk:
+            features = net["trunk"](x)
+            return {prop: net[f"head_{prop}"](features).squeeze(-1) for prop in self.properties}
         return {prop: module(x).squeeze(-1) for prop, module in net.items()}
 
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         self.stats.total_predictions += 1
+        was_training = self.training
+        self.eval()
         with torch.no_grad():
-            return self(x.to(self.device))
+            result = self(x.to(self.device))
+        if was_training:
+            self.train()
+        return result
 
     def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self._data_generator is not None:

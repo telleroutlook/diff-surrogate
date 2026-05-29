@@ -25,16 +25,20 @@ class SurrogateTrainer:
         scheduler: str | None = None,
         scheduler_kwargs: dict | None = None,
         convergence_monitor: ConvergenceMonitor | None = None,
+        optimizer_factory: Callable | None = None,
     ):
         self.surrogate = surrogate
         self.lr = lr
         self.weight_decay = weight_decay
         self.loss_fn = loss_fn or torch.nn.MSELoss()
-        self.optimizer = torch.optim.Adam(
-            self.surrogate.get_network().parameters(),
-            lr=lr,
-            weight_decay=weight_decay,
-        )
+        if optimizer_factory is not None:
+            self.optimizer = optimizer_factory(self.surrogate.get_network().parameters())
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.surrogate.get_network().parameters(),
+                lr=lr,
+                weight_decay=weight_decay,
+            )
         if scheduler == "cosine":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer, **(scheduler_kwargs or {"T_max": 100})
@@ -53,6 +57,8 @@ class SurrogateTrainer:
         n_samples: int = 256,
         batch_size: int = 32,
         grad_clip: float | None = None,
+        num_workers: int = 0,
+        pin_memory: bool = False,
     ) -> list[float]:
         inputs, targets = self.surrogate.generate_training_data(n_samples)
         inputs = inputs.to(self.surrogate.device)
@@ -61,7 +67,13 @@ class SurrogateTrainer:
         else:
             targets = targets.to(self.surrogate.device)
 
-        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
+        loader, target_keys = _build_dataloader(
+            inputs,
+            targets,
+            batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
 
         losses = []
         for epoch in range(n_epochs):

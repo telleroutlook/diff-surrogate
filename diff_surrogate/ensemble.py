@@ -52,8 +52,12 @@ class EnsembleSurrogate(SurrogateBase):
 
     def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         self.stats.total_predictions += 1
+        was_training = self.training
+        self.eval()
         with torch.no_grad():
             result = self(x.to(self.device))
+        if was_training:
+            self.train()
         if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
             std_vals = [v for k, v in result.items() if k.endswith("_std")]
             if std_vals:
