@@ -34,9 +34,7 @@ class TrainingBudget:
         }
         total_w = sum(weights.values())
         share = remaining * weights[region] / total_w
-        allocated = int(share)
-        if allocated == 0 and remaining > 0:
-            allocated = 1
+        allocated = max(int(share), 1)
         return min(allocated, remaining)
 
     def record_accuracy(self, region: int, mse: float):

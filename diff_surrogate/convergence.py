@@ -91,6 +91,8 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
 
     current = finite[-1]
     arr = np.asarray(finite[:-1], dtype=np.float64)
+    if len(arr) < 2:
+        return 0.0
 
     mean_val = float(np.mean(arr))
     std_dev = float(np.std(arr, ddof=1))

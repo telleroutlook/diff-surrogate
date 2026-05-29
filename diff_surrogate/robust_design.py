@@ -150,7 +150,8 @@ def robust_design_step(
 
     # --- 1. Designable mask: detach frozen pixels, no hooks needed ---
     if designable_mask is not None:
-        eff_design = torch.where(designable_mask, design, design.detach())
+        mask = designable_mask.to(design.device)
+        eff_design = torch.where(mask, design, design.detach())
     else:
         eff_design = design
 

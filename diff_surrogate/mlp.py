@@ -37,8 +37,13 @@ class MonotoneLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.raw_weight, nonlinearity="relu")
-        self.raw_weight.data.abs_()
+        temp = torch.empty_like(self.raw_weight)
+        nn.init.kaiming_uniform_(temp, nonlinearity="relu")
+        temp.abs_()
+        with torch.no_grad():
+            self.raw_weight.copy_(
+                torch.log(torch.exp(torch.clamp(temp, min=1e-6)) - 1.0)
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         w = torch.nn.functional.softplus(self.raw_weight)

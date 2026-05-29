@@ -63,11 +63,6 @@ class SurrogateTrainer:
         loss_weights: dict[str, float] | None = None,
     ) -> list[float]:
         inputs, targets = self.surrogate.generate_training_data(n_samples)
-        inputs = inputs.to(self.surrogate.device)
-        if isinstance(targets, dict):
-            targets = {k: v.to(self.surrogate.device) for k, v in targets.items()}
-        else:
-            targets = targets.to(self.surrogate.device)
 
         loader, target_keys = _build_dataloader(
             inputs,
@@ -81,18 +76,18 @@ class SurrogateTrainer:
         for epoch in range(n_epochs):
             epoch_loss = torch.zeros((), device=self.surrogate.device)
             for batch in loader:
-                batch_x = batch[0]
+                batch_x = batch[0].to(self.surrogate.device)
                 self.optimizer.zero_grad()
                 output = self.surrogate(batch_x)
 
                 if target_keys is not None:
                     loss = sum(
                         (loss_weights.get(k, 1.0) if loss_weights else 1.0)
-                        * self.loss_fn(output[k], batch[i + 1])
+                        * self.loss_fn(output[k], batch[i + 1].to(self.surrogate.device))
                         for i, k in enumerate(target_keys)
                     )
                 else:
-                    loss = self.loss_fn(output, batch[1])
+                    loss = self.loss_fn(output, batch[1].to(self.surrogate.device))
 
                 loss.backward()
                 if grad_clip is not None:

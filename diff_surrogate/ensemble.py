@@ -190,6 +190,14 @@ class EnsembleSurrogate(SurrogateBase):
                     1,
                     sum(1 for k in surrogate_output if not k.endswith("_std") and k in true_output),
                 )
+            elif isinstance(surrogate_output, dict) and isinstance(true_output, torch.Tensor):
+                main_key = "output" if "output" in surrogate_output else next(
+                    k for k in surrogate_output if not k.endswith("_std")
+                )
+                error = torch.mean(
+                    (true_output.to(surrogate_output[main_key].device)
+                     - surrogate_output[main_key]) ** 2
+                ).item()
             elif not isinstance(surrogate_output, dict):
                 error = torch.mean(
                     (true_output.to(surrogate_output.device) - surrogate_output) ** 2

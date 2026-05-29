@@ -130,7 +130,23 @@ def optimize_multifidelity(
                 surrogate_output = surrogate_fn(design)
                 if cfg.calibration_fn is not None:
                     cfg.calibration_fn(surrogate_fn, design, truth_output)
-                output = truth_output + (surrogate_output - surrogate_output.detach())
+                if isinstance(surrogate_output, dict) and isinstance(truth_output, dict):
+                    output = {}
+                    for k, v in surrogate_output.items():
+                        if k in truth_output:
+                            t_val = truth_output[k].to(v.device) if isinstance(
+                                truth_output[k], torch.Tensor
+                            ) else truth_output[k]
+                            output[k] = t_val + (v - v.detach())
+                        else:
+                            output[k] = v
+                else:
+                    t_val = (
+                        truth_output.to(surrogate_output.device)
+                        if isinstance(truth_output, torch.Tensor)
+                        else truth_output
+                    )
+                    output = t_val + (surrogate_output - surrogate_output.detach())
             elif cfg.truth_mode == TruthMode.CALIBRATION_ONLY:
                 # Truth output is only used for calibration — loss uses surrogate.
                 with torch.no_grad():
