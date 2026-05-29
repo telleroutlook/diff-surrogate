@@ -34,3 +34,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["diff_surrogate*"]
+
+[tool.setuptools.package-data]
+diff_surrogate = ["py.typed"]
