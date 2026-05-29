@@ -24,9 +24,11 @@ class EnsembleSurrogate(SurrogateBase):
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
     ):
+        super().__init__(correction_policy=correction_policy, device=device)
         self.base_factory = base_factory
         self.n_members = n_members
-        super().__init__(correction_policy=correction_policy, device=device)
+        if n_members < 1:
+            raise ValueError(f"n_members must be >= 1, got {n_members}")
         self._members = nn.ModuleList([base_factory() for _ in range(n_members)])
 
     def _build_network(self) -> nn.ModuleList:

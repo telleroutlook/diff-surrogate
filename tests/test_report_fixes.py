@@ -197,7 +197,7 @@ def test_predict_with_correction_updates_adaptive_error():
 
     # predict_with_correction should call policy.update_error internally
     x = torch.randn(1, 1, 8, 8)
-    out, action = s.predict_with_correction(
+    _out, action = s.predict_with_correction(
         x, true_solver_fn=lambda inp: torch.zeros_like(s.forward(inp))
     )
     assert action.value == "correct"
@@ -277,7 +277,7 @@ def test_robust_design_mask_zeros_frozen_grads():
 
     design = torch.randn(1, 4, requires_grad=True)
     mask = torch.tensor([[True, False, True, False]])
-    loss, action = robust_design_step(
+    loss, _action = robust_design_step(
         design,
         forward_fn=lambda d: (d**2).sum(),
         loss_fn=lambda o: o.mean(),
@@ -321,3 +321,83 @@ def test_trainer_convergence_early_stop():
     losses = trainer.train(n_epochs=50, n_samples=32)
     # Should have stopped early (losses are near-constant with random data)
     assert len(losses) <= 50
+
+
+# --- Monotonicity verification ---
+
+
+def test_monotone_mlp_actually_monotone():
+    from diff_surrogate.mlp import MonotoneMLP
+
+    torch.manual_seed(0)
+    net = MonotoneMLP(in_features=1, hidden=32, n_layers=3)
+    x = torch.linspace(-3, 3, 100).unsqueeze(1)
+    with torch.no_grad():
+        y = net(x).squeeze()
+    diffs = y[1:] - y[:-1]
+    assert (diffs >= -1e-5).all(), f"non-monotone! min diff={diffs.min()}"
+
+
+# --- Phase drift in adaptive correction ---
+
+
+def test_adaptive_correction_no_phase_drift():
+    from diff_surrogate.base import AdaptiveCorrectionPolicy
+
+    p = AdaptiveCorrectionPolicy(initial_interval=10, warmup_steps=0)
+    corrections = [step for step in range(1, 31) if p.should_correct(step)]
+    # First call triggers at step 1 (_last_correction_step < 0), then every 10 steps
+    assert corrections == [1, 11, 21], f"Expected [1, 11, 21], got {corrections}"
+    # Verify even spacing
+    for i in range(1, len(corrections)):
+        assert corrections[i] - corrections[i - 1] == 10
+    # Now shrink interval and verify even spacing from last correction
+    p.update_error(0.01)  # small error
+    p.update_error(0.01)
+    p._current_interval = 5
+    next_corrections = [step for step in range(31, 50) if p.should_correct(step)]
+    # Last correction was at 21, next at 21+5=26 (<31 missed), 31, 36, 41, 46
+    # But _last_correction_step=21, elapsed at 31 is 10>=5, so 31 triggers, then 36, 41, 46
+    expected = [31, 36, 41, 46]
+    assert next_corrections == expected, f"Expected {expected}, got {next_corrections}"
+    # Verify even spacing of 5
+    for i in range(1, len(next_corrections)):
+        assert next_corrections[i] - next_corrections[i - 1] == 5
+
+
+# --- Dict targets in base train_surrogate ---
+
+
+def test_base_train_surrogate_handles_dict_targets():
+    from diff_surrogate.mlp import MLPSurrogate
+
+    s = MLPSurrogate(n_inputs=2, properties=["a", "b"])
+    losses = s.train_surrogate(n_samples=16, n_epochs=2)
+    assert len(losses) == 2
+    assert all(loss > 0 for loss in losses)
+
+
+# --- Unbatched input safety ---
+
+
+def test_mlp_forward_unbatched_input():
+    from diff_surrogate.mlp import MLPSurrogate
+
+    s = MLPSurrogate(n_inputs=2, properties=["val"])
+    x = torch.randn(2)  # no batch dim
+    out = s(x)
+    assert out["val"].shape == (1,), f"Expected (1,), got {out['val'].shape}"
+
+
+# --- Checkpoint versioning ---
+
+
+def test_checkpoint_format_version(tmp_path):
+    from diff_surrogate.mlp import MLPSurrogate
+
+    s = MLPSurrogate(n_inputs=2, properties=["val"])
+    s.train_surrogate(n_samples=16, n_epochs=1)
+    path = str(tmp_path / "ckpt.pt")
+    s.save_checkpoint(path)
+    ckpt = torch.load(path, weights_only=True)
+    assert ckpt["__format__"] == 1

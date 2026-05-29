@@ -7,18 +7,44 @@ from collections.abc import Callable
 import torch
 import torch.nn as nn
 
-from .base import CorrectionPolicy, SurrogateBase, _build_dataloader
+from .base import CorrectionPolicy, SurrogateBase
 
 
-class MonotoneLinear(nn.Linear):
-    """Linear layer with monotonicity constraint via absolute weights."""
+class MonotoneLinear(nn.Module):
+    """Linear layer with monotonicity constraint via softplus-parameterized positive weights.
+
+    Uses ``softplus(raw_weight)`` instead of ``abs(raw_weight)`` to ensure
+    differentiability at 0 and stable gradient flow during training.
+    """
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.raw_weight = nn.Parameter(torch.empty(out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.raw_weight, nonlinearity="relu")
+        self.raw_weight.data.abs_()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x @ self.weight.abs().T + self.bias
+        w = torch.nn.functional.softplus(self.raw_weight)
+        out = x @ w.T
+        if self.bias is not None:
+            out = out + self.bias
+        return out
 
 
 class MonotoneMLP(nn.Module):
-    """MLP with monotonicity constraint via positive weights.
+    """MLP with approximate monotonicity constraint via positive weights.
+
+    Uses ``MonotoneLinear`` (softplus-parameterized weights) to guarantee
+    non-negative weight matrices. Combined with ReLU activations, this
+    provides approximate monotonicity: non-decreasing along each positive-signed
+    input dimension. Not strictly guaranteed due to ReLU's non-smoothness.
 
     Args:
         in_features: Number of input features.
@@ -96,6 +122,10 @@ class MLPSurrogate(SurrogateBase):
         self.constrained = constrained or {}
         self._data_generator = data_generator
         self.shared_trunk = shared_trunk
+        if n_inputs < 1:
+            raise ValueError(f"n_inputs must be >= 1, got {n_inputs}")
+        if n_layers < 2:
+            raise ValueError(f"n_layers must be >= 2, got {n_layers}")
         super().__init__(correction_policy=correction_policy, device=device)
 
     def _build_network(self) -> nn.ModuleDict:
@@ -127,21 +157,13 @@ class MLPSurrogate(SurrogateBase):
         return nn.ModuleDict(nets)
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        if x.ndim == 1:
+            x = x.unsqueeze(0)
         net = self.get_network()
         if self.shared_trunk:
             features = net["trunk"](x)
-            return {prop: net[f"head_{prop}"](features).squeeze(-1) for prop in self.properties}
-        return {prop: module(x).squeeze(-1) for prop, module in net.items()}
-
-    def predict(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        self.stats.total_predictions += 1
-        was_training = self.training
-        self.eval()
-        with torch.no_grad():
-            result = self(x.to(self.device))
-        if was_training:
-            self.train()
-        return result
+            return {prop: net[f"head_{prop}"](features)[..., 0] for prop in self.properties}
+        return {prop: module(x)[..., 0] for prop, module in net.items()}
 
     def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self._data_generator is not None:
@@ -149,45 +171,3 @@ class MLPSurrogate(SurrogateBase):
         inputs = torch.randn(n_samples, self.n_inputs)
         targets = {prop: torch.randn(n_samples) for prop in self.properties}
         return inputs, targets
-
-    def train_surrogate(
-        self,
-        n_samples: int = 256,
-        n_epochs: int = 10,
-        lr: float = 1e-3,
-        batch_size: int = 32,
-        device: str | None = None,
-    ) -> list[float]:
-        dev = device or self.device
-        inputs, targets = self.generate_training_data(n_samples)
-        inputs = inputs.to(dev)
-        if isinstance(targets, dict):
-            targets = {k: v.to(dev) for k, v in targets.items()}
-
-        net = self.get_network()
-        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-
-        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
-
-        losses = []
-        for _ in range(n_epochs):
-            epoch_loss = 0.0
-            for batch in loader:
-                batch_x = batch[0]
-                optimizer.zero_grad()
-                output = self(batch_x)
-                if target_keys is not None:
-                    loss = sum(
-                        torch.nn.functional.mse_loss(output[k], batch[i + 1])
-                        for i, k in enumerate(target_keys)
-                    )
-                else:
-                    loss = torch.nn.functional.mse_loss(output, batch[1])
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-            avg = epoch_loss / len(loader)
-            losses.append(avg)
-            self.stats.train_losses.append(avg)
-        self._trained = True
-        return losses

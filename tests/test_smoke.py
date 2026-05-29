@@ -128,7 +128,7 @@ def test_hybrid_z_score():
 
 def test_robust_design_step():
     design = torch.randn(1, 4, requires_grad=True)
-    loss, action = robust_design_step(
+    loss, _action = robust_design_step(
         design,
         forward_fn=lambda d: (d**2).sum(),
         loss_fn=lambda o: o.mean(),

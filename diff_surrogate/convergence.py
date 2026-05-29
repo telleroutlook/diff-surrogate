@@ -17,6 +17,7 @@ outlier resistance.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -100,6 +101,10 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     """
     # Early return for very small windows — O(n log n) from sorting is wasteful here.
     if len(values) < 2:
+        return 0.0
+
+    finite = [v for v in values if math.isfinite(v)]
+    if len(finite) < 2:
         return 0.0
 
     # Constant sequence cannot produce a meaningful z-score.

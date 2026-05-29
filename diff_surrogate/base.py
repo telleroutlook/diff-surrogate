@@ -49,13 +49,23 @@ class AdaptiveCorrectionPolicy:
 
     def __post_init__(self):
         self._current_interval: int = self.initial_interval
+        self._last_correction_step: int = -1
         self._error_ema: float | None = None
         self._prev_error_ema: float | None = None
         self._uncertainty_baseline: float | None = None
         self._uncertainty_suppress_steps: int = 0
 
     def should_correct(self, step: int) -> bool:
-        return step >= self.warmup_steps and step % self._current_interval == 0
+        if step < self.warmup_steps:
+            return False
+        if self._last_correction_step < 0:
+            elapsed = self._current_interval
+        else:
+            elapsed = step - self._last_correction_step
+        if elapsed >= self._current_interval:
+            self._last_correction_step = step
+            return True
+        return False
 
     def update_error(self, error: float):
         """Call after each correction with the measured error."""
@@ -137,7 +147,7 @@ class SurrogateBase(ABC, nn.Module):
     def __init__(
         self,
         correction_policy: CorrectionPolicy | None = None,
-        device: str = "cpu",
+        device: str | torch.device | int = "cpu",
     ):
         super().__init__()
         self.correction_policy = correction_policy or CorrectionPolicy()
@@ -162,7 +172,7 @@ class SurrogateBase(ABC, nn.Module):
 
     def get_network(self) -> nn.Module:
         if self._network is None:
-            self._network = self._build_network()
+            self._network = self._build_network().to(self.device)
         return self._network
 
     def train_surrogate(
@@ -172,24 +182,33 @@ class SurrogateBase(ABC, nn.Module):
         lr: float = 1e-3,
         batch_size: int = 32,
     ) -> list[float]:
-        net = self.get_network().to(self.device)
-        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+        net = self.get_network()
+        optimizer = self._ensure_optimizer(lr)
         criterion = nn.MSELoss()
 
         inputs, targets = self.generate_training_data(n_samples)
         inputs = inputs.to(self.device)
-        targets = targets.to(self.device)
+        if isinstance(targets, dict):
+            targets = {k: v.to(self.device) for k, v in targets.items()}
+        else:
+            targets = targets.to(self.device)
 
-        dataset = torch.utils.data.TensorDataset(inputs, targets)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        loader, target_keys = _build_dataloader(inputs, targets, batch_size)
 
         losses = []
-        for epoch in range(n_epochs):
+        for _epoch in range(n_epochs):
             epoch_loss = 0.0
-            for batch_x, batch_y in loader:
+            net.train()
+            for batch in loader:
+                batch_x = batch[0]
                 optimizer.zero_grad()
-                pred = net(batch_x)
-                loss = criterion(pred, batch_y)
+                output = self(batch_x)
+                if target_keys is not None:
+                    loss = sum(
+                        criterion(output[k], batch[i + 1]) for i, k in enumerate(target_keys)
+                    )
+                else:
+                    loss = criterion(output, batch[1])
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
@@ -199,6 +218,13 @@ class SurrogateBase(ABC, nn.Module):
         self._trained = True
         self.stats.train_losses.extend(losses)
         return losses
+
+    def _ensure_optimizer(self, lr: float, weight_decay: float = 0.0) -> torch.optim.Optimizer:
+        if not hasattr(self, "_optimizer") or self._optimizer is None:
+            self._optimizer = torch.optim.Adam(
+                self.get_network().parameters(), lr=lr, weight_decay=weight_decay
+            )
+        return self._optimizer
 
     def predict(self, x: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]:
         self.stats.total_predictions += 1
@@ -278,6 +304,7 @@ class SurrogateBase(ABC, nn.Module):
     def save_checkpoint(self, path: str, optimizer: Any | None = None):
         """Save state: network, stats, step, optimizer, correction policy, RNG."""
         checkpoint: dict[str, Any] = {
+            "__format__": 1,
             "network_state_dict": self.get_network().state_dict(),
             "stats": {
                 "train_losses": list(self.stats.train_losses),
@@ -313,6 +340,12 @@ class SurrogateBase(ABC, nn.Module):
     def load_checkpoint(self, path: str, weights_only: bool = True):
         """Restore network state, stats, step count, and all saved state from a file."""
         checkpoint = torch.load(path, map_location=self.device, weights_only=weights_only)
+        fmt = checkpoint.get("__format__", 0)
+        if fmt != 1:
+            raise ValueError(
+                f"Unsupported checkpoint format {fmt}; expected 1. "
+                "You may need to re-train or convert the checkpoint."
+            )
         self.get_network().load_state_dict(checkpoint["network_state_dict"])
         self.get_network().to(self.device)
         stats = checkpoint["stats"]

@@ -43,7 +43,7 @@ def test_robust_design_step_no_hook_leak():
     design = torch.randn(1, 4, requires_grad=True)
     mask = torch.ones(1, 4, dtype=torch.bool)
     for _ in range(10):
-        loss, action = robust_design_step(
+        _loss, _action = robust_design_step(
             design,
             forward_fn=lambda d: (d**2).sum(),
             loss_fn=lambda o: o.mean(),
@@ -58,7 +58,7 @@ def test_robust_design_returns_action():
 
     design = torch.randn(1, 4, requires_grad=True)
     monitor = ConvergenceMonitor(ConvergenceConfig(window=5))
-    loss, action = robust_design_step(
+    _loss, action = robust_design_step(
         design,
         forward_fn=lambda d: (d**2).sum(),
         loss_fn=lambda o: o.mean(),
@@ -128,7 +128,7 @@ def test_robust_design_corners():
     from diff_surrogate.robust_design import CornerSpec, robust_design_step
 
     design = torch.randn(1, 4, requires_grad=True)
-    loss, action = robust_design_step(
+    loss, _action = robust_design_step(
         design,
         forward_fn=lambda d, **kw: (d**2).sum(),
         loss_fn=lambda o: o.mean(),
@@ -144,7 +144,7 @@ def test_robust_design_batched():
     from diff_surrogate.robust_design import AntitheticConfig, robust_design_step
 
     design = torch.randn(1, 4, requires_grad=True)
-    loss, action = robust_design_step(
+    loss, _action = robust_design_step(
         design,
         forward_fn=lambda d: (d**2).sum(-1, keepdim=True),
         loss_fn=lambda o: o.mean(),
