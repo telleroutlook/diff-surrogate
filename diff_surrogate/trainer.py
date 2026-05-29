@@ -59,6 +59,7 @@ class SurrogateTrainer:
         grad_clip: float | None = None,
         num_workers: int = 0,
         pin_memory: bool = False,
+        loss_weights: dict[str, float] | None = None,
     ) -> list[float]:
         inputs, targets = self.surrogate.generate_training_data(n_samples)
         inputs = inputs.to(self.surrogate.device)
@@ -77,7 +78,7 @@ class SurrogateTrainer:
 
         losses = []
         for epoch in range(n_epochs):
-            epoch_loss = 0.0
+            epoch_loss = torch.zeros((), device=self.surrogate.device)
             for batch in loader:
                 batch_x = batch[0]
                 self.optimizer.zero_grad()
@@ -85,7 +86,9 @@ class SurrogateTrainer:
 
                 if target_keys is not None:
                     loss = sum(
-                        self.loss_fn(output[k], batch[i + 1]) for i, k in enumerate(target_keys)
+                        (loss_weights.get(k, 1.0) if loss_weights else 1.0)
+                        * self.loss_fn(output[k], batch[i + 1])
+                        for i, k in enumerate(target_keys)
                     )
                 else:
                     loss = self.loss_fn(output, batch[1])
@@ -96,8 +99,8 @@ class SurrogateTrainer:
                         self.surrogate.get_network().parameters(), grad_clip
                     )
                 self.optimizer.step()
-                epoch_loss += loss.item()
-            avg = epoch_loss / len(loader)
+                epoch_loss = epoch_loss + loss.detach()
+            avg = (epoch_loss / len(loader)).item()
             losses.append(avg)
             self.surrogate.stats.train_losses.append(avg)
             if self.scheduler:

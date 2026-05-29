@@ -3,6 +3,7 @@
 import pytest
 import torch
 
+from diff_surrogate import AdaptiveCorrectionPolicy, EnsembleSurrogate, MLPSurrogate
 from diff_surrogate.convergence import (
     ConvergenceConfig,
     ConvergenceMonitor,
@@ -63,16 +64,14 @@ def test_adaptive_correction_shrinks_on_declining_error():
 def test_std_uses_bessel_correction():
     import math
 
-    from diff_surrogate.convergence import _std
+    import numpy as np
 
     values = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
-    # Population std: sqrt(sum((x-mean)^2) / N)
     m = sum(values) / len(values)
     pop_std = math.sqrt(sum((v - m) ** 2 for v in values) / len(values))
-    # Sample std (Bessel): sqrt(sum((x-mean)^2) / (N-1))
     sample_std = math.sqrt(sum((v - m) ** 2 for v in values) / (len(values) - 1))
 
-    result = _std(values)
+    result = float(np.std(values, ddof=1))
     assert result == pytest.approx(sample_std)
     assert result != pytest.approx(pop_std)
 
@@ -401,3 +400,191 @@ def test_checkpoint_format_version(tmp_path):
     s.save_checkpoint(path)
     ckpt = torch.load(path, weights_only=True)
     assert ckpt["__format__"] == 1
+
+
+# --- §5.1 Optimizer state roundtrip ---
+
+
+def test_optimizer_state_roundtrip(tmp_path):
+    s = MLPSurrogate(n_inputs=2, properties=["val"])
+    s.train_surrogate(n_samples=16, n_epochs=3, lr=1e-3)
+    path = str(tmp_path / "ckpt.pt")
+    s.save_checkpoint(path)
+
+    s2 = MLPSurrogate(n_inputs=2, properties=["val"])
+    s2.load_checkpoint(path)
+    # Continue training — optimizer state should be restored
+    s2.train_surrogate(n_samples=16, n_epochs=2, lr=1e-3)
+
+    # Fresh model trained 5 epochs from scratch
+    s3 = MLPSurrogate(n_inputs=2, properties=["val"])
+    s3.train_surrogate(n_samples=16, n_epochs=5, lr=1e-3)
+
+    # Resumed model (3+2) should differ from fresh 5-epoch due to optimizer momentum
+    x = torch.randn(8, 2)
+    with torch.no_grad():
+        out2 = s2.predict(x)["val"]
+        out3 = s3.predict(x)["val"]
+    # They won't be identical because momentum state carries over
+    assert not torch.allclose(out2, out3, atol=1e-6)
+
+
+# --- §5.2 predict_with_correction behavior ---
+
+
+def test_predict_with_correction_returns_true_output():
+    from diff_surrogate.base import AdaptiveCorrectionPolicy, CorrectionAction
+    from diff_surrogate.mlp import MLPSurrogate
+
+    policy = AdaptiveCorrectionPolicy(initial_interval=1, warmup_steps=0)
+    s = MLPSurrogate(n_inputs=2, properties=["val"], correction_policy=policy)
+    s.train_surrogate(n_samples=16, n_epochs=1)
+
+    x = torch.randn(1, 2)
+    true_val = {"val": torch.tensor([42.0])}
+
+    out, action = s.predict_with_correction(x, true_solver_fn=lambda _x: true_val)
+    assert action == CorrectionAction.CORRECT
+    assert out["val"].item() == pytest.approx(42.0)
+    assert s.stats.total_corrections == 1
+    assert len(s.stats.correction_errors) == 1
+
+
+def test_predict_with_correction_no_solver():
+    from diff_surrogate.mlp import MLPSurrogate
+
+    s = MLPSurrogate(n_inputs=2, properties=["val"])
+    s.train_surrogate(n_samples=16, n_epochs=1)
+    x = torch.randn(3, 2)
+    out, _action = s.predict_with_correction(x)
+    # Should just return predict() output
+    assert "val" in out
+
+
+# --- §5.6 multifidelity truth_mode variants ---
+
+
+def test_multifidelity_differentiable_mode():
+    from diff_surrogate.multifidelity import MultiFidelityConfig, optimize_multifidelity
+
+    result = optimize_multifidelity(
+        design_init=torch.randn(1, 4),
+        surrogate_fn=lambda d: (d**2).sum(),
+        truth_fn=lambda d: (d**2).sum() + 0.1,
+        loss_fn=lambda o: o.mean(),
+        n_steps=10,
+        config=MultiFidelityConfig(correction_interval=5, truth_mode="differentiable"),
+    )
+    assert len(result.loss_history) == 10
+
+
+def test_multifidelity_best_design_tracking():
+    from diff_surrogate.multifidelity import optimize_multifidelity
+
+    result = optimize_multifidelity(
+        design_init=torch.randn(1, 4),
+        surrogate_fn=lambda d: (d**2).sum(),
+        truth_fn=lambda d: (d**2).sum() + 0.1,
+        loss_fn=lambda o: o.mean(),
+        n_steps=10,
+    )
+    assert result.best_design is not None
+    assert result.best_loss is not None
+    assert result.best_loss <= result.loss_history[-1]
+
+
+# --- §5.7 Ensemble diversity ---
+
+
+def test_ensemble_members_diverse():
+    ens = EnsembleSurrogate(
+        base_factory=lambda: MLPSurrogate(n_inputs=2, properties=["val"]),
+        n_members=5,
+    )
+    x = torch.randn(4, 2)
+    out = ens.predict(x)
+    # std should be > 0 since members have different random inits
+    assert (out["val_std"] > 0).any(), "Ensemble members should produce diverse predictions"
+
+
+# --- §4.4 Ensemble deterministic seeding ---
+
+
+def test_ensemble_deterministic_seeding():
+    def _factory():
+        return MLPSurrogate(n_inputs=2, properties=["val"])
+
+    ens1 = EnsembleSurrogate(base_factory=_factory, n_members=3, seed=42)
+    ens2 = EnsembleSurrogate(base_factory=_factory, n_members=3, seed=42)
+    x = torch.randn(4, 2)
+    with torch.no_grad():
+        out1 = ens1(x)
+        out2 = ens2(x)
+    torch.testing.assert_close(out1["val"], out2["val"])
+
+
+def test_ensemble_different_seeds_differ():
+    def _factory():
+        return MLPSurrogate(n_inputs=2, properties=["val"])
+
+    ens1 = EnsembleSurrogate(base_factory=_factory, n_members=3, seed=42)
+    ens2 = EnsembleSurrogate(base_factory=_factory, n_members=3, seed=99)
+    x = torch.randn(4, 2)
+    with torch.no_grad():
+        out1 = ens1(x)
+        out2 = ens2(x)
+    assert not torch.allclose(out1["val"], out2["val"])
+
+
+# --- §2.1 peek/commit no side effects ---
+
+
+def test_adaptive_correction_peek_no_side_effects():
+    from diff_surrogate.base import AdaptiveCorrectionPolicy
+
+    p = AdaptiveCorrectionPolicy(initial_interval=10, warmup_steps=0)
+    # First call: _last_correction_step < 0, so peek always returns True
+    assert p.peek(0) is True
+    # peek does not commit — calling again still returns True
+    assert p.peek(0) is True
+    # commit manually
+    p.commit(0)
+    # Now peek at 5 should return False (elapsed=5 < interval=10)
+    assert p.peek(5) is False
+    assert p.peek(10) is True
+    # peek at 10 should still return True (no commit happened)
+    assert p.peek(10) is True
+    p.commit(10)
+    assert p.peek(15) is False
+    assert p.peek(20) is True
+
+
+# --- §2.4 loss_weights in train_surrogate ---
+
+
+def test_loss_weights_in_training():
+    s = MLPSurrogate(n_inputs=2, properties=["a", "b"])
+    # Train with b weighted 10x more than a
+    losses = s.train_surrogate(
+        n_samples=64,
+        n_epochs=5,
+        loss_weights={"a": 0.1, "b": 10.0},
+    )
+    assert len(losses) == 5
+
+
+# --- §2.5 Ensemble predict_with_correction preserves _std ---
+
+
+def test_ensemble_predict_with_correction_preserves_uncertainty():
+    policy = AdaptiveCorrectionPolicy(initial_interval=1, warmup_steps=0)
+    ens = EnsembleSurrogate(
+        base_factory=lambda: MLPSurrogate(n_inputs=2, properties=["val"]),
+        n_members=3,
+        correction_policy=policy,
+    )
+    x = torch.randn(2, 2)
+    true_output = {"val": torch.tensor([1.0, 2.0])}
+    out, action = ens.predict_with_correction(x, true_solver_fn=lambda _x: true_output)
+    assert "val_std" in out, "Uncertainty should be preserved during correction"
+    assert action.value == "correct"

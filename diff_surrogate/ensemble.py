@@ -7,7 +7,7 @@ from collections.abc import Callable
 import torch
 import torch.nn as nn
 
-from .base import AdaptiveCorrectionPolicy, CorrectionPolicy, SurrogateBase
+from .base import AdaptiveCorrectionPolicy, CorrectionAction, CorrectionPolicy, SurrogateBase
 
 
 class EnsembleSurrogate(SurrogateBase):
@@ -23,13 +23,23 @@ class EnsembleSurrogate(SurrogateBase):
         n_members: int = 5,
         correction_policy: CorrectionPolicy | None = None,
         device: str = "cpu",
+        seed: int | None = None,
     ):
         super().__init__(correction_policy=correction_policy, device=device)
         self.base_factory = base_factory
         self.n_members = n_members
+        self.seed = seed
         if n_members < 1:
             raise ValueError(f"n_members must be >= 1, got {n_members}")
-        self._members = nn.ModuleList([base_factory() for _ in range(n_members)])
+        members = []
+        for i in range(n_members):
+            if seed is not None:
+                torch.manual_seed(seed + i)
+            member = base_factory()
+            # Force network build while seed is active so init is deterministic
+            member.get_network()
+            members.append(member)
+        self._members = nn.ModuleList(members)
 
     def _build_network(self) -> nn.ModuleList:
         # Network is tracked via _members (nn.ModuleList), so this
@@ -73,11 +83,36 @@ class EnsembleSurrogate(SurrogateBase):
         n_epochs: int = 10,
         lr: float = 1e-3,
         batch_size: int = 32,
+        bootstrap: bool = False,
     ) -> list[list[float]]:
-        """Train each ensemble member independently for diversity."""
+        """Train each ensemble member on shared data for diversity via initialization.
+
+        Args:
+            bootstrap: If True, each member gets a bootstrap resample of the data.
+                If False (default), all members train on the same shared dataset.
+        """
+        shared_inputs, shared_targets = self.generate_training_data(n_samples)
         all_losses = []
         for member in self._members:
-            losses = member.train_surrogate(n_samples, n_epochs, lr, batch_size)
+            if bootstrap:
+                n = shared_inputs.shape[0]
+                idx = torch.randint(0, n, (n,), device=shared_inputs.device)
+                inputs = shared_inputs[idx]
+                if isinstance(shared_targets, dict):
+                    targets = {k: v[idx] for k, v in shared_targets.items()}
+                else:
+                    targets = shared_targets[idx]
+            else:
+                inputs = shared_inputs
+                targets = shared_targets
+            # Override data generator to use shared data, then train
+            original_gen = getattr(member, "_data_generator", None)
+            member._data_generator = lambda _n, _i=inputs, _t=targets: (_i, _t)
+            losses = member.train_surrogate(n_samples=n_samples, n_epochs=n_epochs, lr=lr)
+            if original_gen is not None:
+                member._data_generator = original_gen
+            elif hasattr(member, "_data_generator"):
+                member._data_generator = None
             all_losses.append(losses)
         self._trained = True
         return all_losses
@@ -99,6 +134,59 @@ class EnsembleSurrogate(SurrogateBase):
 
     def generate_training_data(self, n_samples: int) -> tuple:
         return self._members[0].generate_training_data(n_samples)
+
+    def predict_with_correction(
+        self,
+        x: torch.Tensor,
+        true_solver_fn: Callable | None = None,
+    ) -> tuple[dict[str, torch.Tensor], CorrectionAction]:
+        """Predict with correction, preserving uncertainty keys for ensemble output.
+
+        When the correction policy triggers, the true solver output is compared against
+        the ensemble mean (excluding _std keys). The returned dict still contains
+        the ensemble uncertainty estimates alongside the true values.
+        """
+        self._step += 1
+        action = CorrectionAction.CONTINUE
+        if true_solver_fn is not None and self.correction_policy.should_correct(self._step):
+            action = CorrectionAction.CORRECT
+            was_training = self.training
+            self.eval()
+            with torch.no_grad():
+                true_output = true_solver_fn(x)
+                surrogate_output = self(x.to(self.device))
+            # Compute error against mean predictions only (skip _std keys)
+            if isinstance(surrogate_output, dict) and isinstance(true_output, dict):
+                error = sum(
+                    torch.mean((true_output.get(k, v).to(v.device) - v) ** 2).item()
+                    for k, v in surrogate_output.items()
+                    if not k.endswith("_std") and k in true_output
+                ) / max(
+                    1,
+                    sum(1 for k in surrogate_output if not k.endswith("_std") and k in true_output),
+                )
+            elif not isinstance(surrogate_output, dict):
+                error = torch.mean(
+                    (true_output.to(surrogate_output.device) - surrogate_output) ** 2
+                ).item()
+            else:
+                error = 0.0
+            self.stats.correction_errors.append(error)
+            if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
+                self.correction_policy.update_error(error)
+            if was_training:
+                self.train()
+            self.stats.total_corrections += 1
+            # Merge true output with uncertainty from ensemble
+            if isinstance(surrogate_output, dict):
+                merged = dict(surrogate_output)
+                if isinstance(true_output, dict):
+                    for k, v in true_output.items():
+                        merged[k] = v.to(self.device)
+                return merged, action
+            return surrogate_output, action
+
+        return self.predict(x), action
 
     def get_members(self) -> nn.ModuleList:
         return self._members

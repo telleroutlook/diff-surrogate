@@ -55,15 +55,24 @@ class AdaptiveCorrectionPolicy:
         self._uncertainty_baseline: float | None = None
         self._uncertainty_suppress_steps: int = 0
 
-    def should_correct(self, step: int) -> bool:
+    def peek(self, step: int) -> bool:
+        """Check whether correction is due without committing state."""
         if step < self.warmup_steps:
             return False
         if self._last_correction_step < 0:
             elapsed = self._current_interval
         else:
             elapsed = step - self._last_correction_step
-        if elapsed >= self._current_interval:
-            self._last_correction_step = step
+        return elapsed >= self._current_interval
+
+    def commit(self, step: int) -> None:
+        """Record that a correction was performed at *step*."""
+        self._last_correction_step = step
+
+    def should_correct(self, step: int) -> bool:
+        """Peek + commit: returns True and records step if correction is due."""
+        if self.peek(step):
+            self.commit(step)
             return True
         return False
 
@@ -175,12 +184,21 @@ class SurrogateBase(ABC, nn.Module):
             self._network = self._build_network().to(self.device)
         return self._network
 
+    def _apply(self, fn):
+        result = super()._apply(fn)
+        for p in self.parameters():
+            if hasattr(p, "device"):
+                self.device = torch.device(p.device)
+                break
+        return result
+
     def train_surrogate(
         self,
         n_samples: int = 500,
         n_epochs: int = 100,
         lr: float = 1e-3,
         batch_size: int = 32,
+        loss_weights: dict[str, float] | None = None,
     ) -> list[float]:
         net = self.get_network()
         optimizer = self._ensure_optimizer(lr)
@@ -197,7 +215,7 @@ class SurrogateBase(ABC, nn.Module):
 
         losses = []
         for _epoch in range(n_epochs):
-            epoch_loss = 0.0
+            epoch_loss = torch.zeros((), device=self.device)
             net.train()
             for batch in loader:
                 batch_x = batch[0]
@@ -205,14 +223,16 @@ class SurrogateBase(ABC, nn.Module):
                 output = self(batch_x)
                 if target_keys is not None:
                     loss = sum(
-                        criterion(output[k], batch[i + 1]) for i, k in enumerate(target_keys)
+                        (loss_weights.get(k, 1.0) if loss_weights else 1.0)
+                        * criterion(output[k], batch[i + 1])
+                        for i, k in enumerate(target_keys)
                     )
                 else:
                     loss = criterion(output, batch[1])
                 loss.backward()
                 optimizer.step()
-                epoch_loss += loss.item()
-            avg_loss = epoch_loss / len(loader)
+                epoch_loss = epoch_loss + loss.detach()
+            avg_loss = (epoch_loss / len(loader)).item()
             losses.append(avg_loss)
 
         self._trained = True
@@ -319,6 +339,8 @@ class SurrogateBase(ABC, nn.Module):
         }
         if optimizer is not None:
             checkpoint["optimizer_state_dict"] = optimizer.state_dict()
+        elif hasattr(self, "_optimizer") and self._optimizer is not None:
+            checkpoint["optimizer_state_dict"] = self._optimizer.state_dict()
         if isinstance(self.correction_policy, AdaptiveCorrectionPolicy):
             checkpoint["correction_policy"] = {
                 "_current_interval": self.correction_policy._current_interval,
@@ -375,6 +397,11 @@ class SurrogateBase(ABC, nn.Module):
             torch.random.set_rng_state(rng["torch"])
             if torch.cuda.is_available() and "cuda" in rng:
                 torch.cuda.set_rng_state_all(rng["cuda"])
+        if "optimizer_state_dict" in checkpoint:
+            self._optimizer = torch.optim.Adam(self.get_network().parameters(), lr=1e-3)
+            self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        else:
+            self._optimizer = None
 
 
 def _build_dataloader(

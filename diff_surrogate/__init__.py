@@ -20,6 +20,7 @@ from .mlp import MLPSurrogate, MonotoneMLP, PositiveOutputMLP
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
+    TruthMode,
     optimize_multifidelity,
 )
 from .robust_design import (
@@ -30,26 +31,27 @@ from .robust_design import (
 from .trainer import SurrogateTrainer
 
 __all__ = [
-    "SurrogateBase",
-    "CorrectionPolicy",
     "AdaptiveCorrectionPolicy",
-    "SurrogateStats",
-    "CorrectionAction",
-    "TrainingBudget",
+    "AntitheticConfig",
     "CNNSurrogate",
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
-    "hybrid_z_score",
+    "CornerSpec",
+    "CorrectionAction",
+    "CorrectionPolicy",
     "EnsembleSurrogate",
     "MLPSurrogate",
     "MonotoneMLP",
-    "PositiveOutputMLP",
     "MultiFidelityConfig",
     "MultiFidelityResult",
-    "AntitheticConfig",
-    "CornerSpec",
+    "PositiveOutputMLP",
+    "SurrogateBase",
+    "SurrogateStats",
+    "SurrogateTrainer",
+    "TrainingBudget",
+    "TruthMode",
+    "hybrid_z_score",
     "optimize_multifidelity",
     "robust_design_step",
-    "SurrogateTrainer",
 ]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 
 import torch
 from torch import Tensor
@@ -18,6 +19,14 @@ from torch import Tensor
 from .convergence import ConvergenceAction, ConvergenceMonitor
 
 logger = logging.getLogger(__name__)
+
+
+class TruthMode(Enum):
+    """How to evaluate the truth model in multi-fidelity optimization."""
+
+    DIFFERENTIABLE = "differentiable"
+    SURROGATE_GRAD = "surrogate_grad"
+    CALIBRATION_ONLY = "calibration_only"
 
 
 @dataclass
@@ -34,7 +43,7 @@ class MultiFidelityConfig:
     correction_interval: int = 20
     calibration_fn: Callable | None = None
     log_interval: int = 25
-    truth_mode: str = "differentiable"  # "differentiable" | "surrogate_grad" | "calibration_only"
+    truth_mode: str = "surrogate_grad"  # "differentiable" | "surrogate_grad" | "calibration_only"
 
 
 @dataclass
@@ -109,7 +118,8 @@ def optimize_multifidelity(
         if use_truth:
             truth_steps.append(step)
 
-            if cfg.truth_mode == "surrogate_grad":
+            mode = cfg.truth_mode.value if isinstance(cfg.truth_mode, TruthMode) else cfg.truth_mode
+            if mode == "surrogate_grad":
                 # Straight-through estimator: use truth output detached, but pass
                 # gradients through the surrogate so the optimizer still gets a signal.
                 with torch.no_grad():
@@ -118,7 +128,7 @@ def optimize_multifidelity(
                 if cfg.calibration_fn is not None:
                     cfg.calibration_fn(surrogate_fn, design, truth_output)
                 output = truth_output + (surrogate_output - surrogate_output.detach())
-            elif cfg.truth_mode == "calibration_only":
+            elif mode == "calibration_only":
                 # Truth output is only used for calibration — loss uses surrogate.
                 with torch.no_grad():
                     truth_output = truth_fn(design)

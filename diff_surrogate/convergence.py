@@ -18,6 +18,7 @@ outlier resistance.
 from __future__ import annotations
 
 import math
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -54,34 +55,6 @@ class ConvergenceConfig:
     patience: int = 5
 
 
-def _median(values: list[float]) -> float:
-    """Compute median of a list of floats."""
-    if not values:
-        return 0.0
-    return float(np.median(values))
-
-
-def _mean(values: list[float]) -> float:
-    """Compute mean of a list of floats."""
-    if not values:
-        return 0.0
-    return float(np.mean(values))
-
-
-def _std(values: list[float]) -> float:
-    """Compute sample standard deviation (Bessel-corrected, ddof=1) of a list of floats."""
-    if len(values) < 2:
-        return 0.0
-    return float(np.std(values, ddof=1))
-
-
-def _mad(values: list[float]) -> float:
-    """Compute median absolute deviation of a list of floats."""
-    if not values:
-        return 0.0
-    return float(np.median(np.abs(np.array(values) - np.median(values))))
-
-
 def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     """Compute hybrid z-score blending standard and robust (MAD-based) z-scores.
 
@@ -99,7 +72,6 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     Returns:
         Hybrid z-score scalar. Returns 0.0 if insufficient data.
     """
-    # Early return for very small windows — O(n log n) from sorting is wasteful here.
     if len(values) < 2:
         return 0.0
 
@@ -112,16 +84,16 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
         return 0.0
 
     current = values[-1]
-    history = list(values[:-1])
+    arr = np.asarray(values[:-1], dtype=np.float64)
 
-    std_dev = _std(history)
-    mean_val = _mean(history)
+    mean_val = float(np.mean(arr))
+    std_dev = float(np.std(arr, ddof=1))
     z_standard = (current - mean_val) / std_dev if std_dev > 0 else 0.0
 
-    mad_val = _mad(history)
+    med = float(np.median(arr))
+    mad_val = float(np.median(np.abs(arr - med)))
     robust_scale = 1.4826 * mad_val
-    med_val = _median(history)
-    z_robust = (current - med_val) / robust_scale if robust_scale > 0 else z_standard
+    z_robust = (current - med) / robust_scale if robust_scale > 0 else z_standard
 
     return z_standard * (1.0 - weight) + z_robust * weight
 
@@ -144,7 +116,7 @@ class ConvergenceMonitor:
 
     def __init__(self, config: ConvergenceConfig | None = None) -> None:
         self._config = config or ConvergenceConfig()
-        self._history: list[float] = []
+        self._history: deque[float] = deque(maxlen=self._config.window * 2)
         self._reduce_lr_count: int = 0
 
     @property
@@ -176,13 +148,14 @@ class ConvergenceMonitor:
         if len(self._history) < self._config.window:
             return ConvergenceAction.CONTINUE
 
-        window = self._history[-self._config.window :]
+        window = list(self._history)[-self._config.window :]
         z = hybrid_z_score(window, weight=self._config.hybrid_weight)
         abs_z = abs(z)
 
         # Stagnant loss (std + mad == 0) — cannot distinguish true convergence from stagnation.
-        window_std = _std(window)
-        window_mad = _mad(window)
+        arr = np.asarray(window, dtype=np.float64)
+        window_std = float(np.std(arr, ddof=1)) if len(arr) >= 2 else 0.0
+        window_mad = float(np.median(np.abs(arr - np.median(arr))))
         if window_std + window_mad == 0:
             return ConvergenceAction.CONTINUE
 
