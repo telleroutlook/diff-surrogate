@@ -41,9 +41,9 @@ class MonotoneLinear(nn.Module):
         nn.init.kaiming_uniform_(temp, nonlinearity="relu")
         temp.abs_()
         with torch.no_grad():
-            self.raw_weight.copy_(
-                torch.log(torch.exp(torch.clamp(temp, min=1e-6)) - 1.0)
-            )
+            clamped = torch.clamp(temp, min=1e-6)
+            # y + log(1 - exp(-y)) — numerically stable inverse softplus
+            self.raw_weight.copy_(clamped + torch.log(-torch.expm1(-clamped)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         w = torch.nn.functional.softplus(self.raw_weight)

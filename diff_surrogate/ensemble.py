@@ -40,6 +40,7 @@ class EnsembleSurrogate(SurrogateBase):
             member.get_network()
             members.append(member)
         self._members = nn.ModuleList(members)
+        self.to(self.device)
 
     def _build_network(self) -> nn.ModuleList:
         # Network is tracked via _members (nn.ModuleList), so this

@@ -140,6 +140,11 @@ def optimize_multifidelity(
                             output[k] = t_val + (v - v.detach())
                         else:
                             output[k] = v
+                    for k, v in truth_output.items():
+                        if k not in output:
+                            output[k] = v.to(design.device) if isinstance(
+                                v, torch.Tensor
+                            ) else v
                 else:
                     t_val = (
                         truth_output.to(surrogate_output.device)

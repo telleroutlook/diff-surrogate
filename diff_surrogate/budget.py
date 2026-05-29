@@ -23,9 +23,10 @@ class TrainingBudget:
         self._calls_per_region: dict[int, int] = {i: 0 for i in range(self.n_regions)}
         self._accuracy_per_region: dict[int, float] = {i: 1.0 for i in range(self.n_regions)}
         self._total_calls: int = 0
+        self._allocated_pending: int = 0
 
     def allocate(self, region: int) -> int:
-        remaining = self.total_solver_calls - self._total_calls
+        remaining = self.total_solver_calls - (self._total_calls + self._allocated_pending)
         if remaining <= 0:
             return 0
         weights = {
@@ -35,7 +36,9 @@ class TrainingBudget:
         total_w = sum(weights.values())
         share = remaining * weights[region] / total_w
         allocated = max(int(share), 1)
-        return min(allocated, remaining)
+        allocated = min(allocated, remaining)
+        self._allocated_pending += allocated
+        return allocated
 
     def record_accuracy(self, region: int, mse: float):
         self._accuracy_per_region[region] = mse
@@ -43,6 +46,7 @@ class TrainingBudget:
     def record_calls(self, region: int, n: int):
         self._calls_per_region[region] = self._calls_per_region.get(region, 0) + n
         self._total_calls += n
+        self._allocated_pending = max(0, self._allocated_pending - n)
 
     @property
     def is_exhausted(self) -> bool:

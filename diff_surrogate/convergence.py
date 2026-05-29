@@ -96,7 +96,8 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
 
     mean_val = float(np.mean(arr))
     std_dev = float(np.std(arr, ddof=1))
-    if not math.isfinite(std_dev) or std_dev <= 0:
+    eps = 1e-9
+    if not math.isfinite(std_dev) or std_dev < eps:
         z_standard = 0.0
     else:
         z_standard = (current - mean_val) / std_dev
@@ -104,7 +105,7 @@ def hybrid_z_score(values: Sequence[float], weight: float = 0.5) -> float:
     med = float(np.median(arr))
     mad_val = float(np.median(np.abs(arr - med)))
     robust_scale = 1.4826 * mad_val
-    z_robust = (current - med) / robust_scale if robust_scale > 0 else z_standard
+    z_robust = (current - med) / robust_scale if robust_scale > eps else z_standard
 
     return z_standard * (1.0 - weight) + z_robust * weight
 

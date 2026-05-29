@@ -33,6 +33,10 @@ class SurrogateTrainer:
         self.loss_fn = loss_fn or torch.nn.MSELoss()
         if optimizer_factory is not None:
             self.optimizer = optimizer_factory(self.surrogate.get_network().parameters())
+        elif hasattr(surrogate, "_optimizer") and surrogate._optimizer is not None:
+            self.optimizer = surrogate._optimizer
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = lr
         else:
             self.optimizer = torch.optim.Adam(
                 self.surrogate.get_network().parameters(),
@@ -108,6 +112,10 @@ class SurrogateTrainer:
                 if action == ConvergenceAction.REDUCE_LR:
                     for pg in self.optimizer.param_groups:
                         pg["lr"] *= 0.5
+                    if self.scheduler is not None and hasattr(self.scheduler, "base_lrs"):
+                        self.scheduler.base_lrs = [
+                            lr * 0.5 for lr in self.scheduler.base_lrs
+                        ]
         return losses
 
     def state_dict(self) -> dict:
