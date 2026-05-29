@@ -1,4 +1,4 @@
-from .base import SurrogateBase, CorrectionPolicy
+from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats
 from .cnn import CNNSurrogate
 from .convergence import (
     ConvergenceAction,
@@ -6,6 +6,7 @@ from .convergence import (
     ConvergenceMonitor,
     hybrid_z_score,
 )
+from .ensemble import EnsembleSurrogate
 from .mlp import MLPSurrogate, MonotoneMLP, PositiveOutputMLP
 from .multifidelity import (
     MultiFidelityConfig,
@@ -22,11 +23,14 @@ from .trainer import SurrogateTrainer
 __all__ = [
     "SurrogateBase",
     "CorrectionPolicy",
+    "AdaptiveCorrectionPolicy",
+    "SurrogateStats",
     "CNNSurrogate",
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
     "hybrid_z_score",
+    "EnsembleSurrogate",
     "MLPSurrogate",
     "MonotoneMLP",
     "PositiveOutputMLP",

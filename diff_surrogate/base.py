@@ -30,11 +30,62 @@ class CorrectionPolicy:
 
 
 @dataclass
+class AdaptiveCorrectionPolicy:
+    """Correction policy that adjusts frequency based on surrogate accuracy trends.
+
+    If correction errors are growing, correct more often (decrease interval).
+    If errors are stable and small, correct less often (increase interval).
+    """
+    min_interval: int = 2
+    max_interval: int = 50
+    initial_interval: int = 10
+    warmup_steps: int = 5
+    growth_threshold: float = 1.5
+    shrink_threshold: float = 0.5
+    ema_alpha: float = 0.2
+
+    _current_interval: int = 0
+    _error_ema: float | None = None
+    _prev_error_ema: float | None = None
+
+    def __post_init__(self):
+        self._current_interval = self.initial_interval
+        self._step = 0
+
+    def should_correct(self, step: int) -> bool:
+        self._step = step
+        return step >= self.warmup_steps and step % self._current_interval == 0
+
+    def update_error(self, error: float):
+        """Call after each correction with the measured error."""
+        new_ema = error if self._error_ema is None else self.ema_alpha * error + (1 - self.ema_alpha) * self._error_ema
+
+        if self._prev_error_ema is not None and self._error_ema is not None and self._error_ema > 0:
+            ratio = new_ema / self._error_ema
+            if ratio > self.growth_threshold:
+                self._current_interval = max(self.min_interval, self._current_interval - 2)
+            elif ratio < self.shrink_threshold:
+                self._current_interval = min(self.max_interval, self._current_interval + 2)
+
+        self._prev_error_ema = self._error_ema
+        self._error_ema = new_ema
+
+    @property
+    def current_interval(self) -> int:
+        return self._current_interval
+
+
+@dataclass
 class SurrogateStats:
     train_losses: list = field(default_factory=list)
     correction_errors: list = field(default_factory=list)
     total_predictions: int = 0
     total_corrections: int = 0
+    per_property_accuracy: dict[str, float] = field(default_factory=dict)
+    uncertainty_calibration: float = 0.0
+
+    def update_accuracy(self, property_name: str, error: float):
+        self.per_property_accuracy[property_name] = error
 
 
 class SurrogateBase(ABC, nn.Module):
@@ -154,3 +205,35 @@ class SurrogateBase(ABC, nn.Module):
             preds = self.get_network()(inputs.to(self.device))
         mse = torch.mean((preds - targets.to(self.device)) ** 2).item()
         return {"mse": mse, "rmse": mse**0.5}
+
+    def save_checkpoint(self, path: str):
+        """Save network state, stats, and step count to a file."""
+        checkpoint = {
+            "network_state_dict": self.get_network().state_dict(),
+            "stats": {
+                "train_losses": self.stats.train_losses,
+                "correction_errors": self.stats.correction_errors,
+                "total_predictions": self.stats.total_predictions,
+                "total_corrections": self.stats.total_corrections,
+                "per_property_accuracy": self.stats.per_property_accuracy,
+                "uncertainty_calibration": self.stats.uncertainty_calibration,
+            },
+            "step": self._step,
+            "trained": self._trained,
+        }
+        torch.save(checkpoint, path)
+
+    def load_checkpoint(self, path: str):
+        """Restore network state, stats, and step count from a file."""
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        self.get_network().load_state_dict(checkpoint["network_state_dict"])
+        self.get_network().to(self.device)
+        stats = checkpoint["stats"]
+        self.stats.train_losses = stats["train_losses"]
+        self.stats.correction_errors = stats["correction_errors"]
+        self.stats.total_predictions = stats["total_predictions"]
+        self.stats.total_corrections = stats["total_corrections"]
+        self.stats.per_property_accuracy = stats.get("per_property_accuracy", {})
+        self.stats.uncertainty_calibration = stats.get("uncertainty_calibration", 0.0)
+        self._step = checkpoint["step"]
+        self._trained = checkpoint["trained"]
