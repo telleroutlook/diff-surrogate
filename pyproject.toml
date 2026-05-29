@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "diff-surrogate"
+version = "0.1.0"
+description = "Unified differentiable surrogate framework for physics simulations"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.0"]
+
+[tool.setuptools.packages.find]
+include = ["diff_surrogate*"]
