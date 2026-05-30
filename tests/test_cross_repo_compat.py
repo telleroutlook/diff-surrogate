@@ -136,12 +136,10 @@ class TestCoDesignGradientFlow:
     def test_with_diffnano_solver(self):
         """End-to-end test using DiffNano RCWA if available."""
         diffnano = pytest.importorskip("diffnano")
-        # Construct a tiny RCWA problem (1 layer, 2 orders)
         solver = diffnano.RCWASolver(
-            wavelength=torch.tensor(0.193),
-            n_orders=2,
-            layer_thicknesses=torch.tensor([0.05]),
-            layer_eps=torch.tensor([2.25]),
+            fourier_orders=2,
+            wavelength_nm=532.0,
+            period_nm=(400.0, 400.0),
         )
         assert solver is not None
 
