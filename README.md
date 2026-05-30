@@ -375,6 +375,38 @@ Supporting:
 | DiffNano | CorrectionPolicy, SurrogateStats, CoDesignWorkflow, CoupledLoss, geometry.*, adaptive_robust.* | RCWA solver correction, metalens co-design, adaptive robust optimization, B-spline geometry |
 | OpenLithoHub | CorrectionPolicy, ConvergenceMonitor, ConvergenceConfig, ConvergenceAction, hybrid_z_score, CoDesignWorkflow, CoupledLoss | ILT correction and convergence, lithography co-design |
 
+## When to use co-design
+
+Co-design via differentiable coupling is a powerful technique, but it is not always the right choice. The benchmarks in this repository include toy problems (quadratic coupling, B-spline geometry) where decoupled methods matched or outperformed coupled optimization, alongside flagship physics problems (metalens DFM, flow-litho) where co-design delivered clear improvements. The following checklist summarizes the decision boundary.
+
+### USE co-design when
+
+- **Domains share design variables.** A single parameter tensor (e.g., mask density, B-spline control points) feeds into multiple forward models, and gradients from each domain flow back to the same parameters.
+- **Gradients flow across domain boundaries.** The output of one domain physically feeds into another (e.g., lithography contour determines EM boundary conditions), creating genuine cross-domain gradient paths.
+- **There are real trade-offs between domain objectives.** The optimal design for domain A actively harms domain B (e.g., sharp optical features that are unprintable), requiring a Pareto-optimal compromise.
+- **The coupling is non-trivial.** Complex, non-convex forward models with high-dimensional design spaces where sequential optimization gets trapped in single-domain local minima.
+- **Manufacturing-aware design is required.** Embedding fabrication constraints during optimization avoids the design-then-verify cycle.
+
+### DO NOT use co-design when
+
+- **Domains are independent.** No shared variables, no output coupling, no cross-domain constraints. Running them together adds overhead without benefit.
+- **One domain dominates the objective.** If one domain's loss is orders of magnitude larger or has a much steeper landscape, the shared optimizer will effectively ignore the other domain. Weight tuning rarely fixes this robustly.
+- **The coupling is weak or additive.** Simple quadratic coupling or additive penalty terms are handled well by alternating optimization without the cost of joint gradient computation.
+- **Gradient conflict is severe.** When domains have strongly opposing gradients (one pushes a variable left, the other pushes it right), the coupled optimizer wastes steps fighting itself. Decoupled methods make faster per-domain progress.
+- **One domain is computationally expensive.** Coupled optimization requires all domain forward passes at every step. If one domain is costly (e.g., full-wave EM), a multi-fidelity or periodic-coupling strategy may be more efficient.
+
+### Key insight from benchmarks
+
+On the quadratic coupling and B-spline geometry toy problems, decoupled methods achieved lower final loss than the coupled strategy in several configurations. For example, on the quadratic benchmark (200 steps, Adam lr=0.01, seed=42):
+
+| Strategy | Final Loss | Best Loss |
+|----------|-----------|-----------|
+| Coupled | 7.903 | 7.903 |
+| Decoupled-sequential | 3.512 | 1.223 |
+| Decoupled-alternating | 6.437 | 1.732 |
+
+This is expected. These problems have simple coupling structure (quadratic penalty, SDF matching) where alternating optimization converges well. The coupled optimizer spends steps resolving gradient conflicts that decoupled methods avoid by construction. The real advantage of co-design emerges on high-dimensional physics problems with complex coupling (metalens DFM: 30--50% reduction in lithographic EPE; flow-litho: wider process windows). See `benchmarks/CODESIGN_PREPRINT.md` Section 4 for the full discussion.
+
 ## License
 
 Apache License 2.0

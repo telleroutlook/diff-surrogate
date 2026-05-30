@@ -109,6 +109,47 @@ class CoDesignWorkflow:
     and an optional coupling function that mediates information flow between
     domain outputs.
 
+    When to use this class
+    ----------------------
+    Co-design is beneficial when domains genuinely interact through shared
+    design variables or cross-domain outputs.  It is **not** a universal
+    improvement over independent (decoupled) optimization.
+
+    **USE co-design when:**
+
+    * Domains share design variables and gradients flow across domain
+      boundaries (e.g., mask density feeds both an EM solver and a lithography
+      model).
+    * There are real trade-offs between domain objectives — the optimum for
+      domain A actively harms domain B, requiring a Pareto compromise.
+    * The coupling is non-trivial: complex, non-convex forward models with
+      high-dimensional design spaces where sequential optimization gets trapped
+      in single-domain local minima.
+    * Manufacturing-aware design is needed — embedding fabrication constraints
+      during optimization avoids the design-then-verify cycle.
+
+    **DO NOT use co-design when:**
+
+    * Domains are independent (no shared variables, no output coupling).
+      Running them together adds overhead without benefit.
+    * One domain dominates the objective (orders-of-magnitude loss difference
+      or much steeper landscape).  Weight tuning rarely fixes this robustly.
+    * The coupling is weak or additive (e.g., simple quadratic penalty).
+      Alternating optimization handles these cases without joint gradient cost.
+    * Gradient conflict is severe — opposing gradients cause the coupled
+      optimizer to spend steps fighting itself.  Decoupled methods make faster
+      per-domain progress.
+    * One domain is computationally expensive.  Coupled optimization requires
+      all forward passes every step; consider multi-fidelity or periodic-
+      coupling strategies instead.
+
+    **Benchmark insight:**  On the quadratic coupling and B-spline geometry toy
+    problems shipped with this library, decoupled methods achieved lower final
+    loss than the coupled strategy.  This is expected — simple coupling
+    structure favours alternating optimization.  The advantage of co-design
+    emerges on high-dimensional physics problems with complex coupling.  See
+    ``benchmarks/CODESIGN_PREPRINT.md`` Section 4 for the full analysis.
+
     Parameters
     ----------
     design_params : torch.Tensor
