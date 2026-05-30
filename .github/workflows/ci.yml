@@ -16,6 +16,28 @@ jobs:
       - run: ruff format --check diff_surrogate tests
       - run: pytest -v
 
+  flagship-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .[dev]
+      - run: make flagship-ci
+      - name: Validate output JSON
+        run: |
+          python3 -c "
+          import json, sys
+          p = 'benchmarks/results/codesign_benchmark_results.json'
+          with open(p) as f:
+              data = json.load(f)
+          assert 'config' in data, 'missing config'
+          assert 'benchmarks' in data, 'missing benchmarks'
+          assert len(data['benchmarks']) >= 1, 'no benchmark results'
+          print('OK: flagship output JSON valid')
+          "
+
   # Cross-repo integration: install all 4 repos and run compatibility tests.
   # Single Python version to save CI minutes.
   cross-repo:
