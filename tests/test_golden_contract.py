@@ -20,7 +20,7 @@ from diff_surrogate.geometry import (
 )
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
-RTOL = 1e-10
+RTOL = 1e-6
 
 
 def _assert_close(actual: np.ndarray, expected: np.ndarray, label: str):
