@@ -2,6 +2,12 @@ __version__ = "0.2.0"
 
 from . import geometry
 from .adaptive_corner import AdaptiveMultiCornerEvaluator
+from .adaptive_robust import (
+    AdaptiveRobustOptimizer,
+    FabricableSubspaceProjection,
+    axial_samples,
+    correlated_perturbation,
+)
 from .base import (
     AdaptiveCorrectionPolicy,
     CorrectionAction,
@@ -35,6 +41,10 @@ from .trainer import SurrogateTrainer
 __all__ = [
     "AdaptiveCorrectionPolicy",
     "AdaptiveMultiCornerEvaluator",
+    "AdaptiveRobustOptimizer",
+    "FabricableSubspaceProjection",
+    "axial_samples",
+    "correlated_perturbation",
     "AntitheticConfig",
     "CNNSurrogate",
     "Constraint",
