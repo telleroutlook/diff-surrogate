@@ -407,6 +407,27 @@ On the quadratic coupling and B-spline geometry toy problems, decoupled methods 
 
 This is expected. These problems have simple coupling structure (quadratic penalty, SDF matching) where alternating optimization converges well. The coupled optimizer spends steps resolving gradient conflicts that decoupled methods avoid by construction. The real advantage of co-design emerges on high-dimensional physics problems with complex coupling (metalens DFM: 30--50% reduction in lithographic EPE; flow-litho: wider process windows). See `benchmarks/CODESIGN_PREPRINT.md` Section 4 for the full discussion.
 
+## Benchmarks & Reproducibility
+
+### Co-Design Benchmark (Multi-Seed)
+
+Run the co-design vs decoupled benchmark across 10 seeds with Wilcoxon significance tests:
+
+```bash
+make flagship          # 10 seeds, full report
+make flagship-ci       # 3 seeds, CI smoke test
+```
+
+Or directly:
+
+```bash
+python benchmarks/run_codesign_benchmarks.py                # 10 seeds (default)
+python benchmarks/run_codesign_benchmarks.py --seeds 20     # custom seed count
+python benchmarks/run_codesign_benchmarks.py --seed-start 0 # start from seed 0
+```
+
+Results are written to `benchmarks/results/`. The full analysis is in `benchmarks/CODESIGN_PREPRINT.md`.
+
 ## License
 
 Apache License 2.0
