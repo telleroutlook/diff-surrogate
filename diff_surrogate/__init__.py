@@ -26,6 +26,7 @@ from .convergence import (
 )
 from .ensemble import EnsembleSurrogate
 from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
+from .sdf_trunk import SDFTrunkSurrogate
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
@@ -58,6 +59,7 @@ __all__ = [
     "FabricableSubspaceProjection",
     "MLPSurrogate",
     "MonotoneMLP",
+    "SDFTrunkSurrogate",
     "MultiFidelityConfig",
     "MultiFidelityResult",
     "PositiveOutputMLP",

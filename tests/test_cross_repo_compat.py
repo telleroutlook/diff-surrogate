@@ -34,7 +34,7 @@ class TestVersionPins:
         "module_name, expected_version",
         [
             ("diffnano", "0.6.0"),
-            ("diffcfd", "0.7.0"),
+            ("diffcfd", "0.75.0"),
         ],
     )
     def test_downstream_version(self, module_name, expected_version):
