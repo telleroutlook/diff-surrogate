@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .base import (
     AdaptiveCorrectionPolicy,
@@ -29,6 +29,7 @@ from .robust_design import (
     robust_design_step,
 )
 from .trainer import SurrogateTrainer
+from . import geometry
 
 __all__ = [
     "AdaptiveCorrectionPolicy",
@@ -55,4 +56,5 @@ __all__ = [
     "hybrid_z_score",
     "optimize_multifidelity",
     "robust_design_step",
+    "geometry",
 ]
