@@ -186,6 +186,29 @@ surrogate.save_checkpoint("checkpoint.pt")
 surrogate.load_checkpoint("checkpoint.pt")
 ```
 
+### Co-Design API
+
+Couple multiple physics domains through a shared design parameter tensor:
+
+```python
+from diff_surrogate import CoDesignWorkflow, CoupledLoss
+
+loss = CoupledLoss(
+    components={"optical": optical_fn, "litho": litho_fn},
+    weights={"optical": 1.0, "litho": 0.1},
+)
+
+wf = CoDesignWorkflow(
+    design_params=torch.rand(32, 32),
+    forward_fns={"em": em_forward, "litho": litho_forward},
+    loss_fn=loss,
+    coupling_fn=litho_to_em_coupling,
+)
+params, history = wf.run(n_steps=200)
+_, baseline_history = wf.compare_baseline(n_steps=200)
+report = wf.report()  # improvement_pct, breakdown, histories
+```
+
 ## Architecture
 
 ```
@@ -199,7 +222,8 @@ Supporting:
 ├── ConvergenceMonitor — hybrid z-score convergence detection
 ├── TrainingBudget — allocate solver calls across regions
 ├── robust_design_step — mask + antithetic + multi-corner
-└── optimize_multifidelity — surrogate + truth alternating optimization
+├── optimize_multifidelity — surrogate + truth alternating optimization
+└── CoDesignWorkflow / CoupledLoss — multi-domain coupled optimization
 ```
 
 ## Consumers

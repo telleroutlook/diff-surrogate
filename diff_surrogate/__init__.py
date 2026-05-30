@@ -1,6 +1,7 @@
 __version__ = "0.2.0"
 
 from . import geometry
+from . import interop
 from .adaptive_corner import AdaptiveMultiCornerEvaluator
 from .adaptive_robust import (
     AdaptiveRobustOptimizer,
@@ -36,6 +37,7 @@ from .robust_design import (
     CornerSpec,
     robust_design_step,
 )
+from .codesign import CoDesignWorkflow, CoupledLoss
 from .trainer import SurrogateTrainer
 
 __all__ = [
@@ -48,10 +50,12 @@ __all__ = [
     "AntitheticConfig",
     "CNNSurrogate",
     "Constraint",
+    "CoDesignWorkflow",
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
     "CornerSpec",
+    "CoupledLoss",
     "CorrectionAction",
     "CorrectionPolicy",
     "EnsembleSurrogate",
@@ -67,6 +71,7 @@ __all__ = [
     "TruthMode",
     "geometry",
     "hybrid_z_score",
+    "interop",
     "optimize_multifidelity",
     "robust_design_step",
 ]
