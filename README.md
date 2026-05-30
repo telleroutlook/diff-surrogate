@@ -245,7 +245,77 @@ for region in range(4):
     budget.record_calls(region, n_samples)
 ```
 
-### Co-Design API
+### Sobolev Training and Gradient Fidelity (S7.1)
+
+Train surrogates to match not just function values but also gradient fields, improving gradient accuracy for downstream optimization:
+
+```python
+from diff_surrogate import MLPSurrogate
+from diff_surrogate.training import SobolevLoss
+
+surrogate = MLPSurrogate(n_inputs=2, properties=["density"])
+optimizer = torch.optim.Adam(surrogate.parameters(), lr=1e-3)
+
+for batch in dataloader:
+    x, y_true, grad_true = batch
+    y_pred = surrogate.predict(x)
+    grad_pred = torch.autograd.grad(y_pred["density"].sum(), x, create_graph=True)[0]
+    loss = SobolevLoss(lambda_grad=0.1)(y_pred["density"], y_true, grad_pred, grad_true)
+    loss.backward()
+    optimizer.step()
+```
+
+### Point Cloud Geometry Encoder (S7.2)
+
+Encode surface point clouds into latent geometry representations for neural operator inputs:
+
+```python
+from diff_surrogate.geometry import PointCloudEncoder
+
+encoder = PointCloudEncoder(
+    n_points=256,
+    d_in=3,          # xyz coordinates
+    d_latent=64,
+    n_heads=4,
+)
+latent = encoder(points)  # (B, 256, 3) -> (B, 64)
+```
+
+### Active Sampling and Multi-Fidelity Learner (S7.3)
+
+Adaptive sampling strategy that selects training points where surrogate uncertainty is highest, with multi-fidelity oracle scheduling:
+
+```python
+from diff_surrogate import ActiveSampler, MultiFidelityLearner
+
+sampler = ActiveSampler(
+    n_candidates=1000,
+    acquisition="uncertainty",  # or "gradient", "random"
+    ensemble=my_ensemble,
+)
+
+learner = MultiFidelityLearner(
+    surrogate=my_surrogate,
+    low_fidelity_fn=cheap_solver,
+    high_fidelity_fn=expensive_solver,
+    budget=500,
+    fidelity_ratio=0.8,  # 80% low-fidelity, 20% high-fidelity
+)
+
+# Query new points, evaluate, and retrain
+new_points = sampler.select(n=50)
+learner.add_observations(new_points, fidelity="high")
+learner.retrain()
+```
+
+### Cross-Repo Compatibility Tests (S7.4)
+
+Expanded cross-repository compatibility test suite verifying that diff-surrogate imports, correction policies, convergence monitors, and geometry operators work correctly when consumed by DiffCFD, DiffNano, and OpenLithoHub:
+
+```bash
+# Run cross-repo compatibility tests
+pytest tests/test_cross_repo_compat.py -v
+```
 
 Couple multiple physics domains through a shared design parameter tensor:
 
@@ -362,7 +432,16 @@ Geometry (diff_surrogate.geometry):
 ├── sdf_from_curve            — differentiable SDF with soft-min + winding number
 ├── differentiable_winding_number — differentiable inside/outside detection
 ├── sigmoid_projection        — sigmoid soft-binarisation
-└── heaviside_projection      — beta-continuation projection
+├── heaviside_projection      — beta-continuation projection
+└── PointCloudEncoder         — surface point cloud to latent geometry (S7.2)
+
+Training (diff_surrogate.training):
+├── SobolevLoss               — joint value + gradient matching loss (S7.1)
+└── SurrogateTrainer          — configurable training loop with schedulers
+
+Active Learning (diff_surrogate.active):
+├── ActiveSampler             — uncertainty/gradient-based point selection (S7.3)
+└── MultiFidelityLearner      — adaptive fidelity scheduling with budget tracking (S7.3)
 
 Interop (diff_surrogate.interop):
 ├── j2t / t2j                 — zero-copy JAX <-> PyTorch via dlpack
@@ -370,7 +449,6 @@ Interop (diff_surrogate.interop):
 
 Supporting:
 ├── TrainingBudget            — allocate solver calls across regions
-├── SurrogateTrainer          — configurable training loop with schedulers
 └── SurrogateStats            — training/correction statistics tracking
 ```
 
@@ -394,6 +472,10 @@ Supporting:
 | JAX interop (`wrap_jax_fn`, `j2t`/`t2j`) | `diff_surrogate/interop/` | `tests/test_interop.py`, `tests/test_interop_roundtrip.py` | N/A (functional) | Verified |
 | Geometry operators (B-spline, SDF, winding number) | `diff_surrogate/geometry/` | `tests/test_geometry.py` | N/A (functional) | Verified |
 | Multi-fidelity optimization | `diff_surrogate/multifidelity.py` | `tests/test_smoke.py` | Internal | Verified |
+| Sobolev training (gradient fidelity) | `diff_surrogate/training/sobolev.py` | `tests/test_sobolev.py` | Internal | Verified |
+| Point cloud geometry encoder | `diff_surrogate/geometry/pointcloud.py` | `tests/test_pointcloud.py` | Internal | Verified |
+| Active sampling + multi-fidelity learner | `diff_surrogate/active/` | `tests/test_active.py` | Internal | Verified |
+| Cross-repo compatibility (DiffCFD / DiffNano / OpenLithoHub) | `tests/test_cross_repo_compat.py` | `tests/test_cross_repo_compat.py` | N/A (functional) | Verified |
 
 > **Note (10-seed benchmark, 2026-05-30):** The full 10-seed benchmark (80 train / 20 test / 100 epochs) shows **GeoFNO** achieving the lowest L2 error on both cylinder (0.397±0.103) and heat_exchanger (0.402±0.110) problems, closely followed by FNO. SDFTrunk is significantly worse on both problems (p=0.014), not better as the preliminary 2-seed run suggested — the earlier advantage was a small-sample artifact. CrossAttnSurrogate is newly added and not yet in the benchmark JSON.
 
