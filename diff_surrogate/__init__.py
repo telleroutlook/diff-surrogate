@@ -32,6 +32,16 @@ from .conformal import (
 from .cross_attn import CrossAttnSurrogate
 from .ensemble import EnsembleSurrogate
 from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
+from .pretraining import (
+    FewShotFinetuner,
+    MultiTaskPretrainer,
+    PDENet,
+    TransferBenchmark,
+    task_advection_1d,
+    task_diffusion_2d,
+    task_poisson_1d,
+    task_reaction_diffusion_1d,
+)
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
@@ -44,6 +54,14 @@ from .robust_design import (
     robust_design_step,
 )
 from .sdf_trunk import SDFTrunkSurrogate
+from .structure import (
+    ConservationLoss,
+    DivergenceConservingProjection,
+    FluxConservingLinear,
+    StructurePreservingEncoder,
+    discrete_divergence,
+    discrete_gradient,
+)
 from .trainer import SobolevLoss, SurrogateTrainer, gradient_fidelity_score
 
 __all__ = [
@@ -68,11 +86,25 @@ __all__ = [
     "FabricableSubspaceProjection",
     "MLPSurrogate",
     "MonotoneMLP",
+    "MultiTaskPretrainer",
+    "PDENet",
+    "FewShotFinetuner",
+    "TransferBenchmark",
+    "task_advection_1d",
+    "task_diffusion_2d",
+    "task_poisson_1d",
+    "task_reaction_diffusion_1d",
     "MultiFidelityConfig",
     "MultiFidelityResult",
     "PositiveOutputMLP",
     "SDFTrunkSurrogate",
     "SobolevLoss",
+    "ConservationLoss",
+    "DivergenceConservingProjection",
+    "FluxConservingLinear",
+    "StructurePreservingEncoder",
+    "discrete_divergence",
+    "discrete_gradient",
     "SurrogateBase",
     "SurrogateStats",
     "SurrogateTrainer",
