@@ -9,7 +9,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-__all__ = ["sigmoid_projection", "heaviside_projection"]
+__all__ = ["heaviside_projection", "sigmoid_projection"]
 
 
 def sigmoid_projection(

@@ -89,9 +89,7 @@ class AdaptiveMultiCornerEvaluator:
         if not corners:
             raise ValueError("corners must be a non-empty list of CornerSpec")
         if not 0.0 <= uncertainty_weight <= 1.0:
-            raise ValueError(
-                f"uncertainty_weight must be in [0, 1], got {uncertainty_weight}"
-            )
+            raise ValueError(f"uncertainty_weight must be in [0, 1], got {uncertainty_weight}")
         if min_weight < 0.0:
             raise ValueError(f"min_weight must be >= 0, got {min_weight}")
         if skip_threshold < 0.0:
@@ -160,10 +158,11 @@ class AdaptiveMultiCornerEvaluator:
 
         weighted_loss = torch.stack(per_corner_loss).sum()
 
+        unc_list = uncertainties if uncertainties is not None else [0.0] * len(self.corners)
         info: dict[str, Any] = {
             "per_corner_loss": info_losses,
             "weights": weights,
-            "uncertainties": uncertainties if uncertainties is not None else [0.0] * len(self.corners),
+            "uncertainties": unc_list,
             "skipped": skipped,
         }
         return weighted_loss, info
@@ -182,10 +181,7 @@ class AdaptiveMultiCornerEvaluator:
         n = len(self.corners)
         static = [c.weight for c in self.corners]
         static_sum = sum(static)
-        if static_sum == 0:
-            static_norm = [1.0 / n] * n
-        else:
-            static_norm = [w / static_sum for w in static]
+        static_norm = [1.0 / n] * n if static_sum == 0 else [w / static_sum for w in static]
 
         if self.ensemble is None:
             return static_norm
@@ -202,8 +198,7 @@ class AdaptiveMultiCornerEvaluator:
         unc_norm = [u / unc_sum for u in uncertainties]
 
         blended = [
-            (1.0 - alpha) * s + alpha * u
-            for s, u in zip(static_norm, unc_norm)
+            (1.0 - alpha) * s + alpha * u for s, u in zip(static_norm, unc_norm, strict=True)
         ]
 
         # Apply minimum weight floor and renormalize
@@ -257,15 +252,12 @@ class AdaptiveMultiCornerEvaluator:
             return None
 
         uncertainties: list[float] = []
-        for corner in self.corners:
+        for _corner in self.corners:
             try:
-                means, stds = self.ensemble.predict_with_uncertainty(design)
-                # Aggregate scalar uncertainty from returned std dicts
+                _, stds = self.ensemble.predict_with_uncertainty(design)
                 unc_values = [v for v in stds.values()]
                 if unc_values:
-                    scalar_unc = sum(
-                        float(v.mean().item()) for v in unc_values
-                    ) / len(unc_values)
+                    scalar_unc = sum(float(v.mean().item()) for v in unc_values) / len(unc_values)
                 else:
                     scalar_unc = 0.0
             except Exception:

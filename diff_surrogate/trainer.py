@@ -113,9 +113,7 @@ class SurrogateTrainer:
                     for pg in self.optimizer.param_groups:
                         pg["lr"] *= 0.5
                     if self.scheduler is not None and hasattr(self.scheduler, "base_lrs"):
-                        self.scheduler.base_lrs = [
-                            lr * 0.5 for lr in self.scheduler.base_lrs
-                        ]
+                        self.scheduler.base_lrs = [lr * 0.5 for lr in self.scheduler.base_lrs]
         return losses
 
     def state_dict(self) -> dict:

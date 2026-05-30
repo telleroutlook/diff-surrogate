@@ -5,13 +5,12 @@ The loop spends most steps evaluating the fast ``surrogate_fn`` and periodically
 calls the expensive ``truth_fn`` to correct the optimization trajectory. An
 optional ``calibration_fn`` can adjust the surrogate based on truth evaluations.
 """
-
 from __future__ import annotations
 
+import copy
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass
-from enum import Enum
+from dataclasses import dataclass, field
+from typing import Callable
 
 import torch
 from torch import Tensor
@@ -19,14 +18,6 @@ from torch import Tensor
 from .convergence import ConvergenceAction, ConvergenceMonitor
 
 logger = logging.getLogger(__name__)
-
-
-class TruthMode(Enum):
-    """How to evaluate the truth model in multi-fidelity optimization."""
-
-    DIFFERENTIABLE = "differentiable"
-    SURROGATE_GRAD = "surrogate_grad"
-    CALIBRATION_ONLY = "calibration_only"
 
 
 @dataclass
@@ -39,29 +30,21 @@ class MultiFidelityConfig:
             that adjusts the surrogate after a truth evaluation.
         log_interval: Print status every this many steps (0 = silent).
     """
-
     correction_interval: int = 20
     calibration_fn: Callable | None = None
     log_interval: int = 25
-    truth_mode: TruthMode | str = TruthMode.SURROGATE_GRAD
-
-    def __post_init__(self):
-        if isinstance(self.truth_mode, str):
-            self.truth_mode = TruthMode(self.truth_mode)
+    truth_mode: str = "differentiable"  # "differentiable" | "surrogate_grad" | "calibration_only"
 
 
 @dataclass
 class MultiFidelityResult:
     """Result of a multi-fidelity optimization run."""
-
     design: Tensor
     loss_history: list[float]
-    fidelity_history: list[str]  # "surrogate" or "truth" per step
-    truth_steps: list[int]  # indices where truth was evaluated
+    fidelity_history: list[str]       # "surrogate" or "truth" per step
+    truth_steps: list[int]            # indices where truth was evaluated
     converged: bool
     final_step: int
-    best_design: Tensor | None = None
-    best_loss: float | None = None
 
 
 def optimize_multifidelity(
@@ -109,20 +92,18 @@ def optimize_multifidelity(
     truth_steps: list[int] = []
     converged = False
     final_step = n_steps - 1
-    best_design = design.detach().clone()
-    best_loss = float("inf")
 
     for step in range(n_steps):
         optimizer.zero_grad()
 
-        use_truth = step > 0 and step % cfg.correction_interval == 0
+        use_truth = (step > 0 and step % cfg.correction_interval == 0)
         fidelity = "truth" if use_truth else "surrogate"
         fidelity_history.append(fidelity)
 
         if use_truth:
             truth_steps.append(step)
 
-            if cfg.truth_mode == TruthMode.SURROGATE_GRAD:
+            if cfg.truth_mode == "surrogate_grad":
                 # Straight-through estimator: use truth output detached, but pass
                 # gradients through the surrogate so the optimizer still gets a signal.
                 with torch.no_grad():
@@ -130,29 +111,8 @@ def optimize_multifidelity(
                 surrogate_output = surrogate_fn(design)
                 if cfg.calibration_fn is not None:
                     cfg.calibration_fn(surrogate_fn, design, truth_output)
-                if isinstance(surrogate_output, dict) and isinstance(truth_output, dict):
-                    output = {}
-                    for k, v in surrogate_output.items():
-                        if k in truth_output:
-                            t_val = (
-                                truth_output[k].to(v.device)
-                                if isinstance(truth_output[k], torch.Tensor)
-                                else truth_output[k]
-                            )
-                            output[k] = t_val + (v - v.detach())
-                        else:
-                            output[k] = v
-                    for k, v in truth_output.items():
-                        if k not in output:
-                            output[k] = v.to(design.device) if isinstance(v, torch.Tensor) else v
-                else:
-                    t_val = (
-                        truth_output.to(surrogate_output.device)
-                        if isinstance(truth_output, torch.Tensor)
-                        else truth_output
-                    )
-                    output = t_val + (surrogate_output - surrogate_output.detach())
-            elif cfg.truth_mode == TruthMode.CALIBRATION_ONLY:
+                output = truth_output + (surrogate_output - surrogate_output.detach())
+            elif cfg.truth_mode == "calibration_only":
                 # Truth output is only used for calibration — loss uses surrogate.
                 with torch.no_grad():
                     truth_output = truth_fn(design)
@@ -163,8 +123,7 @@ def optimize_multifidelity(
                 # "differentiable": current behaviour, loss.backward() flows through truth_fn.
                 output = truth_fn(design)
                 if cfg.calibration_fn is not None:
-                    with torch.no_grad():
-                        cfg.calibration_fn(surrogate_fn, design, output)
+                    cfg.calibration_fn(surrogate_fn, design, output)
         else:
             output = surrogate_fn(design)
 
@@ -176,9 +135,6 @@ def optimize_multifidelity(
 
         loss_val = loss.item()
         loss_history.append(loss_val)
-        if loss_val < best_loss:
-            best_loss = loss_val
-            best_design = design.detach().clone()
 
         if cfg.log_interval > 0 and (step + 1) % cfg.log_interval == 0:
             logger.info("[step %4d] loss=%.6f  fidelity=%s", step + 1, loss_val, fidelity)
@@ -200,6 +156,4 @@ def optimize_multifidelity(
         truth_steps=truth_steps,
         converged=converged,
         final_step=final_step,
-        best_design=best_design,
-        best_loss=best_loss,
     )

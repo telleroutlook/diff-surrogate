@@ -1,14 +1,6 @@
-__version__ = "0.2.0"
+__version__ = "0.1.0"
 
-from . import geometry
-from .adaptive_corner import AdaptiveMultiCornerEvaluator
-from .base import (
-    AdaptiveCorrectionPolicy,
-    CorrectionAction,
-    CorrectionPolicy,
-    SurrogateBase,
-    SurrogateStats,
-)
+from .base import SurrogateBase, CorrectionPolicy, AdaptiveCorrectionPolicy, SurrogateStats, CorrectionAction
 from .budget import TrainingBudget
 from .cnn import CNNSurrogate
 from .convergence import (
@@ -18,11 +10,10 @@ from .convergence import (
     hybrid_z_score,
 )
 from .ensemble import EnsembleSurrogate
-from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
+from .mlp import MLPSurrogate, MonotoneMLP, PositiveOutputMLP
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
-    TruthMode,
     optimize_multifidelity,
 )
 from .robust_design import (
@@ -33,30 +24,26 @@ from .robust_design import (
 from .trainer import SurrogateTrainer
 
 __all__ = [
+    "SurrogateBase",
+    "CorrectionPolicy",
     "AdaptiveCorrectionPolicy",
-    "AdaptiveMultiCornerEvaluator",
-    "AntitheticConfig",
+    "SurrogateStats",
+    "CorrectionAction",
+    "TrainingBudget",
     "CNNSurrogate",
-    "Constraint",
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
-    "CornerSpec",
-    "CorrectionAction",
-    "CorrectionPolicy",
+    "hybrid_z_score",
     "EnsembleSurrogate",
     "MLPSurrogate",
     "MonotoneMLP",
+    "PositiveOutputMLP",
     "MultiFidelityConfig",
     "MultiFidelityResult",
-    "PositiveOutputMLP",
-    "SurrogateBase",
-    "SurrogateStats",
-    "SurrogateTrainer",
-    "TrainingBudget",
-    "TruthMode",
-    "geometry",
-    "hybrid_z_score",
+    "AntitheticConfig",
+    "CornerSpec",
     "optimize_multifidelity",
     "robust_design_step",
+    "SurrogateTrainer",
 ]

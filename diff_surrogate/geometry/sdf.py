@@ -13,7 +13,7 @@ import math
 import torch
 from torch import Tensor
 
-__all__ = ["sdf_from_curve", "differentiable_winding_number"]
+__all__ = ["differentiable_winding_number", "sdf_from_curve"]
 
 
 def differentiable_winding_number(

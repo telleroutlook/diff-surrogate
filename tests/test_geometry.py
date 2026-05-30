@@ -9,10 +9,7 @@ Acceptance criteria (WS-A1):
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
-import numpy as np
-import pytest
 import torch
 from torch import Tensor
 from torch.testing import assert_close
@@ -25,19 +22,22 @@ from diff_surrogate.geometry import (
     sigmoid_projection,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _circle_points(n: int = 32, radius: float = 1.0, center=(0.0, 0.0)):
     """Generate control points for a circle."""
     angles = torch.linspace(0, 2 * math.pi, n + 1)[:-1]
     cx, cy = center
-    return torch.stack([
-        cx + radius * torch.cos(angles),
-        cy + radius * torch.sin(angles),
-    ], dim=-1)
+    return torch.stack(
+        [
+            cx + radius * torch.cos(angles),
+            cy + radius * torch.sin(angles),
+        ],
+        dim=-1,
+    )
 
 
 def _finite_diff_grad(
@@ -61,6 +61,7 @@ def _finite_diff_grad(
 # ---------------------------------------------------------------------------
 # B-spline tests
 # ---------------------------------------------------------------------------
+
 
 class TestBSpline:
     def test_closure(self):
@@ -102,8 +103,7 @@ class TestBSpline:
 
     def test_gradient_vs_findiff(self):
         """Analytical gradient matches finite differences."""
-        cp = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]],
-                          requires_grad=True)
+        cp = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], requires_grad=True)
         t = torch.tensor([0.25])
 
         def fn(x):
@@ -118,6 +118,7 @@ class TestBSpline:
 # ---------------------------------------------------------------------------
 # Winding number tests
 # ---------------------------------------------------------------------------
+
 
 class TestWindingNumber:
     def test_inside_circle(self):
@@ -156,6 +157,7 @@ class TestWindingNumber:
 # ---------------------------------------------------------------------------
 # SDF tests
 # ---------------------------------------------------------------------------
+
 
 class TestSDF:
     def test_inside_negative(self):
@@ -200,10 +202,17 @@ class TestSDF:
 
     def test_gradient_vs_findiff(self):
         """SDF gradient matches finite differences."""
-        cp = torch.tensor([
-            [1.0, 0.0], [0.5, 0.8], [-0.5, 0.8],
-            [-1.0, 0.0], [-0.5, -0.8], [0.5, -0.8],
-        ], requires_grad=True)
+        cp = torch.tensor(
+            [
+                [1.0, 0.0],
+                [0.5, 0.8],
+                [-0.5, 0.8],
+                [-1.0, 0.0],
+                [-0.5, -0.8],
+                [0.5, -0.8],
+            ],
+            requires_grad=True,
+        )
         H, W = 8, 8
         grid_x = torch.linspace(-2, 2, W).unsqueeze(0).expand(H, W)
         grid_y = torch.linspace(-2, 2, H).unsqueeze(1).expand(H, W)
@@ -222,6 +231,7 @@ class TestSDF:
 # ---------------------------------------------------------------------------
 # Projection tests
 # ---------------------------------------------------------------------------
+
 
 class TestProjection:
     def test_sigmoid_inside_outside(self):
@@ -270,6 +280,7 @@ class TestProjection:
 # ---------------------------------------------------------------------------
 # End-to-end pipeline test
 # ---------------------------------------------------------------------------
+
 
 class TestPipeline:
     def test_control_points_to_density(self):

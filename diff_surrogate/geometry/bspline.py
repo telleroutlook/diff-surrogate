@@ -6,7 +6,6 @@ parameter values.  Vectorised over ``t`` for efficient curve sampling.
 
 from __future__ import annotations
 
-import torch
 from torch import Tensor
 
 __all__ = ["eval_closed_cubic_bspline"]

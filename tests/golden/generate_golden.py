@@ -22,10 +22,13 @@ from diff_surrogate.geometry import (
 
 def _circle_points(n, radius=1.0):
     angles = torch.linspace(0, 2 * math.pi, n + 1)[:-1]
-    return torch.stack([
-        radius * torch.cos(angles),
-        radius * torch.sin(angles),
-    ], dim=-1)
+    return torch.stack(
+        [
+            radius * torch.cos(angles),
+            radius * torch.sin(angles),
+        ],
+        dim=-1,
+    )
 
 
 def generate_circle_golden():
@@ -59,10 +62,17 @@ def generate_circle_golden():
 
 def generate_bspline_golden():
     """Golden contract for a non-trivial B-spline shape."""
-    cp = torch.tensor([
-        [1.0, 0.0], [0.3, 0.9], [-0.6, 0.7],
-        [-1.0, 0.0], [-0.4, -0.8], [0.5, -0.7],
-    ], dtype=torch.float64)
+    cp = torch.tensor(
+        [
+            [1.0, 0.0],
+            [0.3, 0.9],
+            [-0.6, 0.7],
+            [-1.0, 0.0],
+            [-0.4, -0.8],
+            [0.5, -0.7],
+        ],
+        dtype=torch.float64,
+    )
     H, W = 24, 24
     grid_x = torch.linspace(-2, 2, W, dtype=torch.float64).unsqueeze(0).expand(H, W)
     grid_y = torch.linspace(-2, 2, H, dtype=torch.float64).unsqueeze(1).expand(H, W)
