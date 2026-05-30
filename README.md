@@ -395,7 +395,7 @@ Supporting:
 | Geometry operators (B-spline, SDF, winding number) | `diff_surrogate/geometry/` | `tests/test_geometry.py` | N/A (functional) | Verified |
 | Multi-fidelity optimization | `diff_surrogate/multifidelity.py` | `tests/test_smoke.py` | Internal | Verified |
 
-> **Note:** The benchmark data file (`surrogate_benchmark_results.json`) uses 2 seeds per model. SDFTrunk consistently outperforms FNO and GeoFNO on both cylinder and heat_exchanger problems, but the sample size (N=2) is too small for statistical significance (Wilcoxon p=0.5). A larger seed sweep would be needed to confirm the advantage.
+> **Note (10-seed benchmark, 2026-05-30):** The full 10-seed benchmark (80 train / 20 test / 100 epochs) shows **GeoFNO** achieving the lowest L2 error on both cylinder (0.397±0.103) and heat_exchanger (0.402±0.110) problems, closely followed by FNO. SDFTrunk is significantly worse on both problems (p=0.014), not better as the preliminary 2-seed run suggested — the earlier advantage was a small-sample artifact. CrossAttnSurrogate is newly added and not yet in the benchmark JSON.
 
 ## Compatibility
 
