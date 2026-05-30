@@ -37,7 +37,7 @@ from torch import Tensor
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from diff_surrogate import SDFTrunkSurrogate
+from diff_surrogate import CrossAttnSurrogate, SDFTrunkSurrogate
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 DEFAULT_N_SEEDS = 10
@@ -159,6 +159,20 @@ def make_geo_fno(modes: int = 8, width: int = 32, depth: int = 3) -> torch.nn.Mo
     return GeoFNO(fno, deform_hidden=16)
 
 
+def make_cross_attn(
+    param_dim: int = 2,
+    n_outputs: int = 3,
+    hidden_dim: int = 64,
+    n_heads: int = 4,
+) -> CrossAttnSurrogate:
+    return CrossAttnSurrogate(
+        param_dim=param_dim,
+        n_outputs=n_outputs,
+        hidden_dim=hidden_dim,
+        n_heads=n_heads,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Training & evaluation
 # ---------------------------------------------------------------------------
@@ -193,7 +207,7 @@ def _train_model(
             yb = targets[idx]
             opt.zero_grad()
 
-            if isinstance(model, SDFTrunkSurrogate):
+            if isinstance(model, (SDFTrunkSurrogate, CrossAttnSurrogate)):
                 pred = model((xb_sdf, xb_param))
             elif hasattr(model, "forward") and "sdf" in model.forward.__code__.co_varnames:
                 # GeoFNO
@@ -217,7 +231,7 @@ def _train_model(
 def _evaluate_l2(model: torch.nn.Module, inputs, targets: Tensor) -> float:
     """Compute L2 relative error."""
     with torch.no_grad():
-        if isinstance(model, SDFTrunkSurrogate):
+        if isinstance(model, (SDFTrunkSurrogate, CrossAttnSurrogate)):
             sdf_in, param_in = inputs
             pred = model((sdf_in, param_in))
         elif hasattr(model, "forward") and "sdf" in model.forward.__code__.co_varnames:
@@ -244,7 +258,7 @@ def _measure_latency(
     # Warmup
     for _ in range(n_warmup):
         with torch.no_grad():
-            if isinstance(model, SDFTrunkSurrogate):
+            if isinstance(model, (SDFTrunkSurrogate, CrossAttnSurrogate)):
                 model(inputs)
             else:
                 model(inputs if not isinstance(inputs, tuple) else inputs[0])
@@ -253,7 +267,7 @@ def _measure_latency(
     for _ in range(n_runs):
         t0 = time.perf_counter()
         with torch.no_grad():
-            if isinstance(model, SDFTrunkSurrogate):
+            if isinstance(model, (SDFTrunkSurrogate, CrossAttnSurrogate)):
                 model(inputs)
             else:
                 model(inputs if not isinstance(inputs, tuple) else inputs[0])
@@ -377,6 +391,7 @@ def _run_single_benchmark(
     # --- SDF-Trunk ---
     torch.manual_seed(seed)
     sdf_model = make_sdf_trunk()
+    sdf_model.get_network()  # eagerly build network so parameters() is non-empty
     _train_model(sdf_model, (sdf_train, param_train), y_train, n_epochs=n_epochs)
     l2_sdf = _evaluate_l2(sdf_model, (sdf_test, param_test), y_test)
     lat_sdf = _measure_latency(sdf_model, (sdf_test[:1], param_test[:1]))
@@ -397,6 +412,19 @@ def _run_single_benchmark(
         "model": "GeoFNO",
         "l2_error": l2_geo,
         "latency_ms": lat_geo,
+    })
+
+    # --- CrossAttn ---
+    torch.manual_seed(seed)
+    ca_model = make_cross_attn()
+    ca_model.get_network()
+    _train_model(ca_model, (sdf_train, param_train), y_train, n_epochs=n_epochs)
+    l2_ca = _evaluate_l2(ca_model, (sdf_test, param_test), y_test)
+    lat_ca = _measure_latency(ca_model, (sdf_test[:1], param_test[:1]))
+    results.append({
+        "model": "CrossAttn",
+        "l2_error": l2_ca,
+        "latency_ms": lat_ca,
     })
 
     return results

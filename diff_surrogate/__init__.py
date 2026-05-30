@@ -17,6 +17,7 @@ from .base import (
 )
 from .budget import TrainingBudget
 from .cnn import CNNSurrogate
+from .cross_attn import CrossAttnSurrogate
 from .codesign import CoDesignWorkflow, CoupledLoss
 from .convergence import (
     ConvergenceAction,
@@ -51,6 +52,7 @@ __all__ = [
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
+    "CrossAttnSurrogate",
     "CornerSpec",
     "CorrectionAction",
     "CorrectionPolicy",
