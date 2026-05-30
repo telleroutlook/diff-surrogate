@@ -1,0 +1,113 @@
+{
+  "config": {
+    "n_seeds": 2,
+    "seed_start": 42,
+    "n_train": 20,
+    "n_test": 5,
+    "n_epochs": 30
+  },
+  "problems": [
+    "cylinder",
+    "heat_exchanger"
+  ],
+  "results": [
+    {
+      "model": "FNO",
+      "problem_idx": 0,
+      "n_seeds": 2,
+      "l2_error_mean": 1.5404295854412609,
+      "l2_error_std": 0.30242935342258015,
+      "latency_ms_mean": 2.4261342536192387,
+      "latency_ms_std": 0.08556705868242345,
+      "l2_error_values": [
+        1.3265797388062914,
+        1.7542794320762303
+      ]
+    },
+    {
+      "model": "SDFTrunk",
+      "problem_idx": 0,
+      "n_seeds": 2,
+      "l2_error_mean": 0.5827669414850203,
+      "l2_error_std": 0.04685023680049921,
+      "latency_ms_mean": 0.6834135972894728,
+      "latency_ms_std": 0.10062531270653727,
+      "l2_error_values": [
+        0.5496388213431918,
+        0.6158950616268488
+      ],
+      "wilcoxon_vs_fno": {
+        "statistic": 0.0,
+        "p_value": 0.5,
+        "significant_005": false
+      }
+    },
+    {
+      "model": "GeoFNO",
+      "problem_idx": 0,
+      "n_seeds": 2,
+      "l2_error_mean": 0.9334684306329919,
+      "l2_error_std": 0.05078539618871637,
+      "latency_ms_mean": 3.9379856025334448,
+      "latency_ms_std": 0.5823598399190082,
+      "l2_error_values": [
+        0.8975577326027051,
+        0.9693791286632787
+      ],
+      "wilcoxon_vs_fno": {
+        "statistic": 0.0,
+        "p_value": 0.5,
+        "significant_005": false
+      }
+    },
+    {
+      "model": "FNO",
+      "problem_idx": 1,
+      "n_seeds": 2,
+      "l2_error_mean": 0.9290170031253613,
+      "l2_error_std": 0.2594233245121783,
+      "latency_ms_mean": 2.4687855708179995,
+      "latency_ms_std": 0.11547870588192717,
+      "l2_error_values": [
+        0.7455770111648418,
+        1.112456995085881
+      ]
+    },
+    {
+      "model": "SDFTrunk",
+      "problem_idx": 1,
+      "n_seeds": 2,
+      "l2_error_mean": 0.6615871493360318,
+      "l2_error_std": 0.029675842875039757,
+      "latency_ms_mean": 0.6464192789280787,
+      "latency_ms_std": 0.03069624535812068,
+      "l2_error_values": [
+        0.6825711390703989,
+        0.6406031596016647
+      ],
+      "wilcoxon_vs_fno": {
+        "statistic": 0.0,
+        "p_value": 0.5,
+        "significant_005": false
+      }
+    },
+    {
+      "model": "GeoFNO",
+      "problem_idx": 1,
+      "n_seeds": 2,
+      "l2_error_mean": 0.8825703206319739,
+      "l2_error_std": 0.0668459635192617,
+      "latency_ms_mean": 3.347049609874375,
+      "latency_ms_std": 0.21949853564569946,
+      "l2_error_values": [
+        0.8353030865325555,
+        0.9298375547313925
+      ],
+      "wilcoxon_vs_fno": {
+        "statistic": 1.0,
+        "p_value": 1.0,
+        "significant_005": false
+      }
+    }
+  ]
+}
