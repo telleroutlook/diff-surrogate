@@ -15,3 +15,23 @@ jobs:
       - run: ruff check diff_surrogate tests
       - run: ruff format --check diff_surrogate tests
       - run: pytest -v
+
+  # Cross-repo integration: install all 4 repos and run compatibility tests.
+  # Single Python version to save CI minutes.
+  cross-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install diff-surrogate
+        run: pip install -e .[dev]
+      - name: Install DiffNano
+        run: pip install "diffnano @ git+https://github.com/OpenLithoHub/DiffNano.git"
+      - name: Install DiffCFD
+        run: pip install "diffcfd @ git+https://github.com/OpenLithoHub/DiffCFD.git"
+      - name: Install OpenLithoHub (core)
+        run: pip install "openlithohub @ git+https://github.com/OpenLithoHub/OpenLithoHub.git"
+      - name: Run cross-repo compatibility tests
+        run: pytest tests/test_cross_repo_compat.py -v
