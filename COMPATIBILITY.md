@@ -6,10 +6,10 @@ Pinned versions for the 4-repo differentiable physics ecosystem.
 
 | Repo | Version | Commit | Python |
 |---|---|---|---|
-| [diff-surrogate](https://github.com/telleroutlook/diff-surrogate) | 0.2.0 | `56d5863` | >=3.10, <3.14 |
-| [DiffNano](https://github.com/OpenLithoHub/DiffNano) | 0.6.0 | `609c645` | >=3.10 |
-| [DiffCFD](https://github.com/OpenLithoHub/DiffCFD) | 0.7.0 | `6eea839` | >=3.9 |
-| [OpenLithoHub](https://github.com/OpenLithoHub/OpenLithoHub) | dynamic (hatch-vcs) | `678b4ab` | >=3.10, <3.13 |
+| [diff-surrogate](https://github.com/telleroutlook/diff-surrogate) | 0.2.0 | `d74324b` | >=3.10, <3.14 |
+| [DiffNano](https://github.com/OpenLithoHub/DiffNano) | 0.6.0 | `d02b8e7` | >=3.10 |
+| [DiffCFD](https://github.com/OpenLithoHub/DiffCFD) | 0.7.0 | `f7ba0c9` | >=3.9 |
+| [OpenLithoHub](https://github.com/OpenLithoHub/OpenLithoHub) | dynamic (hatch-vcs) | `4d3d7b9` | >=3.10, <3.13 |
 
 ## Dependency Chain
 
@@ -29,8 +29,8 @@ Both DiffNano and DiffCFD pin `diff-surrogate` at the latest `master` branch
 (since diff-surrogate has not published a wheel yet). OpenLithoHub further
 pins DiffNano and DiffCFD at specific commits in its optional extras:
 
-- `openlithohub[diffnano]` installs `diffnano @ git+...@2ec61b8`
-- `openlithohub[diffcfd]`  installs `diffcfd  @ git+...@a95b64e`
+- `openlithohub[diffnano]` installs `diffnano @ git+...@2ec61b8` (pending update to `d02b8e7`)
+- `openlithohub[diffcfd]`  installs `diffcfd  @ git+...@a95b64e` (pending update to `f7ba0c9`)
 
 ## Updating the Matrix
 

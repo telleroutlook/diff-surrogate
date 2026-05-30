@@ -2,6 +2,10 @@
 
 Unified differentiable surrogate framework for physics simulations. Shared library used by DiffCFD, DiffNano, and OpenLithoHub.
 
+**Honesty boundaries:**
+- No third-party experimental validation. All benchmarks are self-measured toy problems.
+- Co-design benchmarks include quadratic coupling and B-spline geometry toy problems where decoupled methods match or outperform coupled optimization.
+
 ## Installation
 
 ```bash
@@ -427,6 +431,14 @@ python benchmarks/run_codesign_benchmarks.py --seed-start 0 # start from seed 0
 ```
 
 Results are written to `benchmarks/results/`. The full analysis is in `benchmarks/CODESIGN_PREPRINT.md`.
+
+## Related Work
+
+| Method | Venue | Key Idea | Relation to diff-surrogate |
+|:-------|:------|:---------|:---------------------------|
+| Geo-FNO | JMLR 2023 | Geometry-preserving Fourier Neural Operator | diff-surrogate's SDF-trunk geometry module (L2) follows similar geometry-aware operator principles |
+| GAOT | NeurIPS 2025, arXiv:2505.18781 | Geometry-aware operator transformer | Independent work on geometry-aware neural operators; diff-surrogate focuses on multi-physics co-design rather than operator architecture |
+| GINOT | CMAME 2025 | SDF-trunk geometry-informed operator | SDF-based geometry representation for operators; diff-surrogate implements SDF geometry primitives in `diff_surrogate.geometry` |
 
 ## License
 
