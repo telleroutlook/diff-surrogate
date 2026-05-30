@@ -6,6 +6,9 @@ Unified differentiable surrogate framework for physics simulations. Shared libra
 - No third-party experimental validation. All benchmarks are self-measured toy problems.
 - Co-design benchmarks include quadratic coupling and B-spline geometry toy problems where decoupled methods match or outperform coupled optimization.
 
+**Known stubs / unimplemented:**
+- No stubs in diff-surrogate core. All surrogate classes (MLP, CNN, Ensemble), correction policies, convergence monitors, and geometry operators are functional.
+
 ## Installation
 
 ```bash
@@ -439,6 +442,11 @@ Results are written to `benchmarks/results/`. The full analysis is in `benchmark
 | Geo-FNO | JMLR 2023 | Geometry-preserving Fourier Neural Operator | diff-surrogate's SDF-trunk geometry module (L2) follows similar geometry-aware operator principles |
 | GAOT | NeurIPS 2025, arXiv:2505.18781 | Geometry-aware operator transformer | Independent work on geometry-aware neural operators; diff-surrogate focuses on multi-physics co-design rather than operator architecture |
 | GINOT | CMAME 2025 | SDF-trunk geometry-informed operator | SDF-based geometry representation for operators; diff-surrogate implements SDF geometry primitives in `diff_surrogate.geometry` |
+| GAOT v4 | NeurIPS 2025, arXiv:2505.18781 | Multi-scale attention geometry-aware operator transformer | Latest iteration of GAOT with multi-scale attention; extends geometry-aware operator design |
+| GINOT (2026) | CMAME 2026 | Surface point-cloud encoding + cross-attention geometry injection | Updated GINOT with surface point-cloud geometry encoding and cross-attention injection |
+| DNOT | Eng. with Computers 42:60, 2026 | Feature-diffusion enhanced neural operator transformer | Feature-diffusion mechanism for improved neural operator accuracy |
+| DD-DeepONet | Eng. Appl. Artif. Intell. 2026 | Domain decomposition DeepONet | Domain decomposition strategy for scalable DeepONet inference |
+| Schwarz Neural Inference | arXiv:2504.00510 v2, 2026-02 | Local→global domain decomposition operator learning | Schwarz-type alternating decomposition for neural operator training on complex domains |
 
 ## License
 
