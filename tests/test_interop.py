@@ -8,7 +8,7 @@ import torch
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 
-from diff_surrogate.interop import JAXFunctionWrapper, j2t, t2j, wrap_jax_fn
+from diff_surrogate.interop import JAXFunctionWrapper, j2t, t2j, wrap_jax_fn  # noqa: E402
 
 
 class TestBasicConversion:
@@ -42,14 +42,18 @@ class TestBasicConversion:
 
 class TestJAXFunctionWrapper:
     def test_forward_correct(self) -> None:
-        jax_fn = lambda x: jnp.sin(x)
+        def jax_fn(x):
+            return jnp.sin(x)
+
         x = torch.tensor([0.0, 1.0, 2.0])
         y = JAXFunctionWrapper.apply(x, jax_fn)
         expected = torch.sin(x)
         assert torch.allclose(y, expected, atol=1e-6)
 
     def test_backward_correct(self) -> None:
-        jax_fn = lambda x: jnp.sin(x)
+        def jax_fn(x):
+            return jnp.sin(x)
+
         x = torch.tensor([0.5, 1.0, 1.5], requires_grad=True)
         y = JAXFunctionWrapper.apply(x, jax_fn)
         y.sum().backward()
@@ -57,7 +61,9 @@ class TestJAXFunctionWrapper:
         assert torch.allclose(x.grad, expected_grad, atol=1e-6)
 
     def test_quadratic_function(self) -> None:
-        jax_fn = lambda x: x ** 2
+        def jax_fn(x):
+            return x**2
+
         x = torch.tensor([2.0, 3.0, 4.0], requires_grad=True)
         y = JAXFunctionWrapper.apply(x, jax_fn)
         assert torch.allclose(y, torch.tensor([4.0, 9.0, 16.0]))
@@ -65,7 +71,9 @@ class TestJAXFunctionWrapper:
         assert torch.allclose(x.grad, 2 * x.detach())
 
     def test_composed_function(self) -> None:
-        jax_fn = lambda x: jnp.sin(x ** 2)
+        def jax_fn(x):
+            return jnp.sin(x**2)
+
         x = torch.tensor([0.5, 1.0], requires_grad=True)
         y = JAXFunctionWrapper.apply(x, jax_fn)
         y.sum().backward()
@@ -73,7 +81,9 @@ class TestJAXFunctionWrapper:
         assert torch.allclose(x.grad, expected_grad, atol=1e-5)
 
     def test_2d_input(self) -> None:
-        jax_fn = lambda x: jnp.sum(x ** 2, axis=-1, keepdims=True)
+        def jax_fn(x):
+            return jnp.sum(x**2, axis=-1, keepdims=True)
+
         x = torch.tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
         y = JAXFunctionWrapper.apply(x, jax_fn)
         assert y.shape == (2, 1)
@@ -85,14 +95,18 @@ class TestJAXFunctionWrapper:
 
 class TestWrapJaxFn:
     def test_convenience_wrapper_forward(self) -> None:
-        jax_fn = lambda x: jnp.cos(x)
+        def jax_fn(x):
+            return jnp.cos(x)
+
         wrapped = wrap_jax_fn(jax_fn)
         x = torch.tensor([0.0, 1.0])
         y = wrapped(x)
         assert torch.allclose(y, torch.cos(x), atol=1e-6)
 
     def test_convenience_wrapper_backward(self) -> None:
-        jax_fn = lambda x: jnp.cos(x)
+        def jax_fn(x):
+            return jnp.cos(x)
+
         wrapped = wrap_jax_fn(jax_fn)
         x = torch.tensor([0.5, 1.0], requires_grad=True)
         y = wrapped(x)
@@ -115,7 +129,10 @@ class TestGeometryPipelineInterop:
 
     def test_jax_fn_on_geometry_like_data(self) -> None:
         """Simulate a JAX processing step on geometry pipeline output."""
-        jax_fn = lambda x: jnp.exp(-x ** 2)
+
+        def jax_fn(x):
+            return jnp.exp(-(x**2))
+
         wrapped = wrap_jax_fn(jax_fn)
 
         x = torch.linspace(-2, 2, 20, requires_grad=True)

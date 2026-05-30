@@ -12,7 +12,7 @@ calling any function raises ``ImportError`` with a clear message.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 
@@ -22,6 +22,7 @@ def _require_jax():
     try:
         import jax
         import jax.numpy as jnp
+
         return jax, jnp
     except ImportError as e:
         raise ImportError(
@@ -100,7 +101,6 @@ class JAXFunctionWrapper(torch.autograd.Function):
         jax_mod, _ = _require_jax()
         jax_fn = ctx._jax_fn
         jax_x = ctx._jax_x
-        jax_y = ctx._jax_y
 
         _, vjp_fn = jax_mod.vjp(jax_fn, jax_x)
         jax_grad = vjp_fn(t2j(grad_output))[0]
@@ -120,7 +120,9 @@ def wrap_jax_fn(jax_fn: Callable) -> Callable:
     Returns:
         A PyTorch-compatible function.
     """
+
     def wrapped(x: torch.Tensor) -> torch.Tensor:
         return JAXFunctionWrapper.apply(x, jax_fn)
+
     wrapped.__doc__ = f"PyTorch-autograd wrapper for {jax_fn}"
     return wrapped

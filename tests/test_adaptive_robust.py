@@ -13,7 +13,6 @@ from diff_surrogate.adaptive_robust import (
 )
 from diff_surrogate.robust_design import CornerSpec
 
-
 # =====================================================================
 # axial_samples
 # =====================================================================
@@ -130,14 +129,19 @@ class TestAdaptiveRobustOptimizerAxial:
         params = torch.randn(10, dtype=torch.float64)
 
         def forward_fn(p, delta):
-            return (p ** 2).sum()
+            return (p**2).sum()
 
         def perturb_fn(p, delta):
             return p + delta.sum() * 0.01
 
         opt = AdaptiveRobustOptimizer(n_variation_dims=2, sigma=1.0)
         result, history = opt.optimize(
-            params, forward_fn, perturb_fn, n_steps=50, lr=0.05, verbose=False,
+            params,
+            forward_fn,
+            perturb_fn,
+            n_steps=50,
+            lr=0.05,
+            verbose=False,
         )
         assert result.shape == params.shape
         assert len(history) == 50
@@ -151,13 +155,13 @@ class TestAdaptiveRobustOptimizerAxial:
 
         loss_axial = opt.compute_robust_loss(
             params,
-            forward_fn=lambda p, d: (p ** 2).sum(),
+            forward_fn=lambda p, d: (p**2).sum(),
             perturbation_fn=lambda p, d: p,
             curriculum_frac=0.0,
         )
         loss_full = opt.compute_robust_loss(
             params,
-            forward_fn=lambda p, d: (p ** 2).sum(),
+            forward_fn=lambda p, d: (p**2).sum(),
             perturbation_fn=lambda p, d: p,
             curriculum_frac=1.0,
         )
@@ -170,7 +174,7 @@ class TestAdaptiveRobustOptimizerAxial:
 
         loss = opt.compute_robust_loss(
             params,
-            forward_fn=lambda p, d: (p ** 2).sum(),
+            forward_fn=lambda p, d: (p**2).sum(),
             perturbation_fn=lambda p, d: p,
             curriculum_frac=0.5,
         )
@@ -184,7 +188,7 @@ class TestAdaptiveRobustOptimizerAxial:
         params = torch.randn(5, dtype=torch.float64, requires_grad=True)
         loss = opt.compute_robust_loss(
             params,
-            forward_fn=lambda p, d: (p ** 2).sum(),
+            forward_fn=lambda p, d: (p**2).sum(),
             perturbation_fn=lambda p, d: p,
         )
         loss.backward()
@@ -207,14 +211,17 @@ class TestAdaptiveRobustOptimizerCorners:
         """Without ensemble, weights should be static (normalized)."""
         corners = self._make_corners()
         opt = AdaptiveRobustOptimizer(
-            n_variation_dims=2, sigma=1.0, corners=corners, ensemble=None,
+            n_variation_dims=2,
+            sigma=1.0,
+            corners=corners,
+            ensemble=None,
         )
         assert opt.corner_evaluator is not None
 
         params = torch.randn(4, dtype=torch.float64, requires_grad=True)
         loss, info = opt.compute_robust_loss_with_corners(
             params,
-            forward_fn=lambda d: (d ** 2).sum(),
+            forward_fn=lambda d: (d**2).sum(),
             loss_fn=lambda o: o.mean(),
         )
         assert loss.numel() == 1
@@ -228,7 +235,7 @@ class TestAdaptiveRobustOptimizerCorners:
         params = torch.randn(4, dtype=torch.float64, requires_grad=True)
         loss, info = opt.compute_robust_loss_with_corners(
             params,
-            forward_fn=lambda d: (d ** 2).sum(),
+            forward_fn=lambda d: (d**2).sum(),
             loss_fn=lambda o: o.mean(),
         )
         assert loss.numel() == 1
@@ -255,7 +262,7 @@ class TestAdaptiveRobustOptimizerCorners:
         params = torch.randn(4, dtype=torch.float64, requires_grad=True)
         loss, info = opt.compute_robust_loss_with_corners(
             params,
-            forward_fn=lambda d: (d ** 2).sum(),
+            forward_fn=lambda d: (d**2).sum(),
             loss_fn=lambda o: o.mean(),
         )
         assert loss.numel() == 1
@@ -289,19 +296,21 @@ class TestAdaptiveRobustOptimizerCorners:
         w_dynamic = opt_dynamic.corner_evaluator.adaptive_weights(params)
         w_static = opt_static.corner_evaluator.adaptive_weights(params)
 
-        for wd, ws in zip(w_dynamic, w_static):
+        for wd, ws in zip(w_dynamic, w_static, strict=True):
             assert wd == pytest.approx(ws, abs=1e-6)
 
     def test_corner_gradient_flows(self):
         """Gradients must flow through corner-based loss."""
         corners = self._make_corners()
         opt = AdaptiveRobustOptimizer(
-            n_variation_dims=2, sigma=1.0, corners=corners,
+            n_variation_dims=2,
+            sigma=1.0,
+            corners=corners,
         )
         params = torch.randn(4, dtype=torch.float64, requires_grad=True)
         loss, _ = opt.compute_robust_loss_with_corners(
             params,
-            forward_fn=lambda d: (d ** 2).sum(),
+            forward_fn=lambda d: (d**2).sum(),
             loss_fn=lambda o: o.mean(),
         )
         loss.backward()
@@ -322,17 +331,19 @@ class TestAdaptiveRobustOptimizerIntegration:
             CornerSpec(label="stress", weight=0.5),
         ]
         opt = AdaptiveRobustOptimizer(
-            n_variation_dims=2, sigma=1.0, corners=corners,
+            n_variation_dims=2,
+            sigma=1.0,
+            corners=corners,
         )
 
         params = torch.randn(4, dtype=torch.float64, requires_grad=True)
         optimizer = torch.optim.Adam([params], lr=0.05)
         losses = []
 
-        for step in range(30):
+        for _step in range(30):
             loss, _ = opt.compute_robust_loss_with_corners(
                 params,
-                forward_fn=lambda d: (d ** 2).sum(),
+                forward_fn=lambda d: (d**2).sum(),
                 loss_fn=lambda o: o.mean(),
             )
             optimizer.zero_grad()

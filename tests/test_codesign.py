@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
 from diff_surrogate.codesign import CoDesignWorkflow, CoupledLoss
-
 
 # ---------------------------------------------------------------------------
 # Helpers — toy forward functions
@@ -65,7 +63,7 @@ class TestCoupledLoss:
         loss = CoupledLoss(
             components={"x": lambda: torch.tensor(5.0)},
         )
-        total, bd = loss()
+        total, _bd = loss()
         assert abs(total.item() - 5.0) < 1e-6
 
     def test_multi_element_tensor_averaged(self):
@@ -75,7 +73,7 @@ class TestCoupledLoss:
             },
             weights={"v": 1.0},
         )
-        total, bd = loss()
+        _total, bd = loss()
         assert abs(bd["v"] - 2.0) < 1e-6  # mean of [1,2,3]
 
     def test_kwargs_forwarded(self):
@@ -207,7 +205,7 @@ class TestCoDesignWorkflow:
             loss_fn=coupled,
             lr=0.01,
         )
-        final, history = wf.run(n_steps=10, verbose=False)
+        _final, history = wf.run(n_steps=10, verbose=False)
         assert len(history) == 10
         # Verify breakdown is populated
         _, breakdown = wf.step()
@@ -265,7 +263,7 @@ class TestDomainAgnostic:
             loss_fn=simple_loss,
             lr=0.05,
         )
-        final, history = wf.run(n_steps=30, verbose=False)
+        _final, history = wf.run(n_steps=30, verbose=False)
         assert history[-1] < history[0]
 
     def test_three_domains(self):
@@ -279,11 +277,7 @@ class TestDomainAgnostic:
             return {"loss_c": (p - 0.7).abs().mean()}
 
         def combined_loss(**kw):
-            return (
-                kw["a"]["loss_a"]
-                + kw["b"]["loss_b"]
-                + 0.5 * kw["c"]["loss_c"]
-            )
+            return kw["a"]["loss_a"] + kw["b"]["loss_b"] + 0.5 * kw["c"]["loss_c"]
 
         wf = CoDesignWorkflow(
             design_params=torch.rand(8, 8),

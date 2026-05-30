@@ -115,14 +115,18 @@ def generate_polygon_golden():
     grid_y = torch.linspace(-2, 2, H, dtype=torch.float64).unsqueeze(1).expand(H, W)
 
     sdf = sdf_from_curve(
-        grid_x, grid_y, verts,
+        grid_x,
+        grid_y,
+        verts,
         softmin_temp=500.0,
         winding_sharpness=100.0,
     )
 
     verts_grad = verts.detach().clone().requires_grad_(True)
     sdf_g = sdf_from_curve(
-        grid_x, grid_y, verts_grad,
+        grid_x,
+        grid_y,
+        verts_grad,
         softmin_temp=500.0,
         winding_sharpness=100.0,
     )

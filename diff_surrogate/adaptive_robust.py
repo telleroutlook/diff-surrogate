@@ -25,7 +25,6 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
-from torch import Tensor
 
 from .adaptive_corner import AdaptiveMultiCornerEvaluator
 from .robust_design import CornerSpec
@@ -71,7 +70,7 @@ def axial_samples(
         neg[0, i] = -sigma
         axial.append(pos)
         axial.append(neg)
-    return torch.cat([nominal] + axial, dim=0)
+    return torch.cat([nominal, *axial], dim=0)
 
 
 def correlated_perturbation(

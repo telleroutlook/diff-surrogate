@@ -7,7 +7,6 @@ geometry operator change that perturbs the output is caught by CI.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import numpy as np
@@ -28,9 +27,7 @@ def _assert_close(actual: np.ndarray, expected: np.ndarray, label: str):
     denom = np.abs(expected).max() + 1e-30
     rel_err = np.abs(actual - expected) / denom
     max_rel = rel_err.max()
-    assert max_rel < RTOL, (
-        f"{label}: max relative error {max_rel:.2e} >= {RTOL:.1e}"
-    )
+    assert max_rel < RTOL, f"{label}: max relative error {max_rel:.2e} >= {RTOL:.1e}"
 
 
 def test_circle_golden():
@@ -50,9 +47,7 @@ def test_circle_golden():
     curve_g = eval_closed_cubic_bspline(cp_grad, t)
     sdf_g = sdf_from_curve(grid_x, grid_y, curve_g)
     sdf_g.sum().backward()
-    _assert_close(
-        cp_grad.grad.numpy(), g["grad_control_points"], "sdf_circle/grad_cp"
-    )
+    _assert_close(cp_grad.grad.numpy(), g["grad_control_points"], "sdf_circle/grad_cp")
 
 
 def test_bspline_golden():
@@ -74,9 +69,7 @@ def test_bspline_golden():
     sdf_g = sdf_from_curve(grid_x, grid_y, curve_g)
     density_g = sigmoid_projection(sdf_g, beta=10.0)
     density_g.sum().backward()
-    _assert_close(
-        cp_grad.grad.numpy(), g["grad_control_points"], "sdf_bspline/grad_cp"
-    )
+    _assert_close(cp_grad.grad.numpy(), g["grad_control_points"], "sdf_bspline/grad_cp")
 
 
 def test_polygon_golden():
@@ -88,7 +81,9 @@ def test_polygon_golden():
     grid_y = torch.from_numpy(g["grid_y"])
 
     sdf = sdf_from_curve(
-        grid_x, grid_y, verts,
+        grid_x,
+        grid_y,
+        verts,
         softmin_temp=500.0,
         winding_sharpness=100.0,
     )
@@ -96,17 +91,15 @@ def test_polygon_golden():
 
     verts_grad = verts.detach().clone().requires_grad_(True)
     sdf_g = sdf_from_curve(
-        grid_x, grid_y, verts_grad,
+        grid_x,
+        grid_y,
+        verts_grad,
         softmin_temp=500.0,
         winding_sharpness=100.0,
     )
     sdf_g.sum().backward()
-    _assert_close(
-        verts_grad.grad[:, 0].numpy(), g["grad_polygon_vx"], "polygon_sdf/grad_vx"
-    )
-    _assert_close(
-        verts_grad.grad[:, 1].numpy(), g["grad_polygon_vy"], "polygon_sdf/grad_vy"
-    )
+    _assert_close(verts_grad.grad[:, 0].numpy(), g["grad_polygon_vx"], "polygon_sdf/grad_vx")
+    _assert_close(verts_grad.grad[:, 1].numpy(), g["grad_polygon_vy"], "polygon_sdf/grad_vy")
 
 
 def test_pipeline_golden():

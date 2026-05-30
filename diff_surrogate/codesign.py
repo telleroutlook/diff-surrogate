@@ -63,7 +63,11 @@ class CoupledLoss:
         weights: dict[str, float] | None = None,
     ) -> None:
         self.components = components
-        self.weights = {name: weights.get(name, 1.0) for name in components} if weights else {n: 1.0 for n in components}
+        self.weights = (
+            {name: weights.get(name, 1.0) for name in components}
+            if weights
+            else {n: 1.0 for n in components}
+        )
 
     def __call__(self, **kwargs: Any) -> tuple[torch.Tensor, dict[str, float]]:
         """Evaluate all components and return ``(total, breakdown)``.  :stable:
@@ -229,9 +233,7 @@ class CoDesignWorkflow:
             breakdown_history.append(breakdown)
 
             if verbose and i % log_every == 0:
-                parts = " ".join(
-                    f"{k}={v:.6f}" for k, v in breakdown.items() if k != "total"
-                )
+                parts = " ".join(f"{k}={v:.6f}" for k, v in breakdown.items() if k != "total")
                 print(f"[co-design] step {i:4d}  total={loss_val:.6f} {parts}")
 
             if loss_val != loss_val:  # NaN check
@@ -321,10 +323,7 @@ class CoDesignWorkflow:
             result["baseline_final_loss"] = self._baseline_result.loss_history[-1]
             result["baseline_steps"] = len(self._baseline_result.loss_history)
             result["baseline_history"] = self._baseline_result.loss_history
-        if (
-            self._coupled_result is not None
-            and self._baseline_result is not None
-        ):
+        if self._coupled_result is not None and self._baseline_result is not None:
             c = self._coupled_result.loss_history[-1]
             b = self._baseline_result.loss_history[-1]
             result["improvement_pct"] = (b - c) / max(abs(b), 1e-12) * 100
