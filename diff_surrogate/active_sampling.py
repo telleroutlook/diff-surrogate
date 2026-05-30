@@ -14,6 +14,7 @@ from collections.abc import Callable
 import torch
 from torch import Tensor
 
+from .conformal import SplitConformalPredictor
 from .ensemble import EnsembleSurrogate
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class UncertaintyTriggeredSampler:
         self.generator = generator
         self._device = ensemble.device
         self._n_dims = input_bounds.shape[0]
+        self._conformal_predictor: SplitConformalPredictor | None = None
 
     def compute_uncertainty(self, x: Tensor) -> Tensor:
         """Compute prediction variance over ensemble members.
@@ -101,8 +103,50 @@ class UncertaintyTriggeredSampler:
             var = var.mean(dim=-1)
         return var
 
+    def calibrate_uncertainty(
+        self,
+        cal_inputs: Tensor,
+        cal_targets: Tensor | dict[str, Tensor],
+        alpha: float = 0.1,
+    ) -> None:
+        """Calibrate conformal bands using a held-out calibration set.
+
+        After calibration, :meth:`suggest_samples` uses calibrated bandwidth
+        instead of raw ensemble variance to rank candidate locations.
+
+        Args:
+            cal_inputs: Calibration inputs ``(N, d)``.
+            cal_targets: Calibration targets (tensor or dict).
+            alpha: Target miscoverage rate.
+        """
+        self.ensemble.eval()
+        with torch.no_grad():
+            pred = self.ensemble.predict(cal_inputs.to(self._device))
+
+        if isinstance(cal_targets, dict):
+            first_key = next(iter(cal_targets))
+            targets = cal_targets[first_key].to(self._device)
+        else:
+            targets = cal_targets.to(self._device)
+
+        main_key = next(k for k in pred if not k.endswith("_std"))
+        predictions = pred[main_key]
+
+        if predictions.ndim > 1 and predictions.shape[-1] > 1:
+            if targets.ndim == 1:
+                targets = targets.unsqueeze(-1)
+        elif predictions.ndim == 1 and targets.ndim == 2:
+            predictions = predictions.unsqueeze(-1)
+
+        self._conformal_predictor = SplitConformalPredictor()
+        self._conformal_predictor.calibrate(predictions, targets, alpha=alpha)
+
     def suggest_samples(self, n_samples: int = 10) -> Tensor:
         """Suggest new sample locations in high-uncertainty regions.
+
+        When conformal calibration has been performed (via
+        :meth:`calibrate_uncertainty`), uses calibrated bandwidth to rank
+        candidates.  Otherwise falls back to raw ensemble variance.
 
         Strategy:
             1. Generate a large candidate pool (Latin hypercube).
@@ -120,7 +164,10 @@ class UncertaintyTriggeredSampler:
             generator=self.generator,
         )
 
-        uncertainty = self.compute_uncertainty(candidates)
+        if self._conformal_predictor is not None:
+            uncertainty = self._calibrated_bandwidth(candidates)
+        else:
+            uncertainty = self.compute_uncertainty(candidates)
 
         _, top_idx = uncertainty.topk(min(n_greedy, self.n_candidates))
         selected = candidates[top_idx]
@@ -135,6 +182,19 @@ class UncertaintyTriggeredSampler:
             selected = torch.cat([selected, explore_pts], dim=0)
 
         return selected
+
+    def _calibrated_bandwidth(self, x: Tensor) -> Tensor:
+        """Compute calibrated prediction bandwidth at each input point."""
+        self.ensemble.eval()
+        with torch.no_grad():
+            pred = self.ensemble.predict(x.to(self._device))
+        main_key = next(k for k in pred if not k.endswith("_std"))
+        predictions = pred[main_key]
+        lower, upper = self._conformal_predictor.predict(predictions)
+        bw = (upper - lower).abs()
+        if bw.ndim > 1:
+            bw = bw.mean(dim=-1)
+        return bw
 
     def step(
         self,

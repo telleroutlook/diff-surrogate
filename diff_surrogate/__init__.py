@@ -24,6 +24,11 @@ from .convergence import (
     ConvergenceMonitor,
     hybrid_z_score,
 )
+from .conformal import (
+    RiskControllingQuantile,
+    SplitConformalPredictor,
+    coverage_score,
+)
 from .cross_attn import CrossAttnSurrogate
 from .ensemble import EnsembleSurrogate
 from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
@@ -54,6 +59,8 @@ __all__ = [
     "ConvergenceMonitor",
     "CornerSpec",
     "CorrectionAction",
+    "RiskControllingQuantile",
+    "SplitConformalPredictor",
     "CorrectionPolicy",
     "CoupledLoss",
     "CrossAttnSurrogate",
@@ -73,6 +80,7 @@ __all__ = [
     "TruthMode",
     "axial_samples",
     "correlated_perturbation",
+    "coverage_score",
     "geometry",
     "gradient_fidelity_score",
     "hybrid_z_score",
