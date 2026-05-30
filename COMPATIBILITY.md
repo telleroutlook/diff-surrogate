@@ -8,7 +8,7 @@ Pinned versions for the 4-repo differentiable physics ecosystem.
 |---|---|---|---|
 | [diff-surrogate](https://github.com/telleroutlook/diff-surrogate) | 0.2.0 | `d74324b` | >=3.10, <3.14 |
 | [DiffNano](https://github.com/OpenLithoHub/DiffNano) | 0.6.0 | `d02b8e7` | >=3.10 |
-| [DiffCFD](https://github.com/OpenLithoHub/DiffCFD) | 0.7.0 | `f7ba0c9` | >=3.9 |
+| [DiffCFD](https://github.com/OpenLithoHub/DiffCFD) | 0.7.0 | `f7ba0c9` | >=3.10 |
 | [OpenLithoHub](https://github.com/OpenLithoHub/OpenLithoHub) | dynamic (hatch-vcs) | `4d3d7b9` | >=3.10, <3.13 |
 
 ## Dependency Chain
@@ -48,6 +48,6 @@ When any repo releases a new version:
 
 ## Shared Constraints
 
-- PyTorch `>=2.0, <3.0` across all repos.
+- PyTorch `>=2.12, <3.0` across all repos.
 - NumPy `>=1.24` across all repos.
 - Python 3.12 is the CI target for cross-repo integration tests.

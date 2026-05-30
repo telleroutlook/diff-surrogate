@@ -19,7 +19,7 @@ pip install "diff-surrogate @ git+https://github.com/telleroutlook/diff-surrogat
 pip install -e .
 ```
 
-Requires Python >= 3.10 (< 3.14) and PyTorch >= 2.0 (< 3.0).
+Requires Python >= 3.10 (< 3.14) and PyTorch >= 2.12 (< 3.0).
 
 ## Quick Start
 
@@ -381,6 +381,30 @@ Supporting:
 | DiffCFD | CorrectionPolicy, SurrogateStats, ConvergenceAction, geometry.sdf_from_curve | SIMPLE solver correction, topology optimization convergence, airfoil SDF |
 | DiffNano | CorrectionPolicy, SurrogateStats, CoDesignWorkflow, CoupledLoss, geometry.*, adaptive_robust.* | RCWA solver correction, metalens co-design, adaptive robust optimization, B-spline geometry |
 | OpenLithoHub | CorrectionPolicy, ConvergenceMonitor, ConvergenceConfig, ConvergenceAction, hybrid_z_score, CoDesignWorkflow, CoupledLoss | ILT correction and convergence, lithography co-design |
+
+## Flagship Evidence Status
+
+| Claim | Code | Tests | Data | Status |
+|:------|:-----|:------|:-----|:-------|
+| `SDFTrunkSurrogate` geometry-aware operator | `diff_surrogate/sdf_trunk.py` | `tests/test_smoke.py`, `benchmarks/` | `benchmarks/results/surrogate_benchmark_results.json` | Verified |
+| `CrossAttnSurrogate` cross-attention operator | `diff_surrogate/cross_attn.py` | `tests/test_cross_attn.py` | Internal | Verified |
+| FNO benchmark baseline | (consumed by DiffCFD's `FNO2D`) | `tests/test_smoke.py` | `benchmarks/results/surrogate_benchmark_results.json` | Verified |
+| Co-design vs decoupled benchmark (10-seed Wilcoxon) | `benchmarks/run_codesign_benchmarks.py` | `tests/test_codesign.py` | `benchmarks/results/codesign_benchmark_results.json` | Verified |
+| Adaptive robust optimization | `diff_surrogate/adaptive_robust.py` | `tests/test_adaptive_robust.py` | Internal | Verified |
+| JAX interop (`wrap_jax_fn`, `j2t`/`t2j`) | `diff_surrogate/interop/` | `tests/test_interop.py`, `tests/test_interop_roundtrip.py` | N/A (functional) | Verified |
+| Geometry operators (B-spline, SDF, winding number) | `diff_surrogate/geometry/` | `tests/test_geometry.py` | N/A (functional) | Verified |
+| Multi-fidelity optimization | `diff_surrogate/multifidelity.py` | `tests/test_smoke.py` | Internal | Verified |
+
+> **Note:** The benchmark data file (`surrogate_benchmark_results.json`) uses 2 seeds per model. SDFTrunk consistently outperforms FNO and GeoFNO on both cylinder and heat_exchanger problems, but the sample size (N=2) is too small for statistical significance (Wilcoxon p=0.5). A larger seed sweep would be needed to confirm the advantage.
+
+## Compatibility
+
+| Dependency | Version |
+|:-----------|:--------|
+| Python | 3.10+ (< 3.14) |
+| PyTorch | 2.12+ (< 3.0) |
+
+**Consumers:** [DiffCFD](https://github.com/OpenLithoHub/DiffCFD), [DiffNano](https://github.com/OpenLithoHub/DiffNano), [OpenLithoHub](https://github.com/OpenLithoHub/OpenLithoHub) all depend on diff-surrogate for shared surrogate classes, correction policies, convergence monitoring, geometry operators, and co-design workflow infrastructure.
 
 ## When to use co-design
 
