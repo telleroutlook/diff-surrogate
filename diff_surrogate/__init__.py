@@ -1,5 +1,6 @@
 __version__ = "0.2.0"
 
+from .adaptive_corner import AdaptiveMultiCornerEvaluator
 from .base import (
     AdaptiveCorrectionPolicy,
     CorrectionAction,
@@ -33,6 +34,7 @@ from . import geometry
 
 __all__ = [
     "AdaptiveCorrectionPolicy",
+    "AdaptiveMultiCornerEvaluator",
     "AntitheticConfig",
     "CNNSurrogate",
     "Constraint",
