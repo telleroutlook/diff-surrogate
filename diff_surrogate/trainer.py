@@ -6,11 +6,146 @@ import logging
 from collections.abc import Callable
 
 import torch
+import torch.nn.functional as F
 
 from .base import SurrogateBase, _build_dataloader
 from .convergence import ConvergenceAction, ConvergenceMonitor
 
 logger = logging.getLogger(__name__)
+
+
+class SobolevLoss(torch.nn.Module):
+    """MSE + optional derivative-matching (Sobolev) loss.
+
+    When ``derivative_weight`` > 0 the loss also penalises discrepancies
+    between surrogate and target *gradients* w.r.t. the inputs.
+
+    Args:
+        derivative_weight: Relative weight of the gradient MSE term.
+            0.0 means plain MSE (no derivative matching).
+        base_loss: Underlying value-level loss.  Defaults to MSELoss.
+    """
+
+    def __init__(
+        self,
+        derivative_weight: float = 1.0,
+        base_loss: torch.nn.Module | None = None,
+    ):
+        super().__init__()
+        self.derivative_weight = derivative_weight
+        self.base_loss = base_loss or torch.nn.MSELoss()
+
+    def forward(
+        self,
+        surrogate_output: torch.Tensor,
+        target: torch.Tensor,
+        inputs: torch.Tensor,
+        surrogate_grad: torch.Tensor | None = None,
+        target_grad: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Compute combined value + gradient MSE.
+
+        Pre-computed gradients can be passed directly; otherwise they are
+        computed internally via ``torch.autograd.grad``.
+        """
+        value_loss = self.base_loss(surrogate_output, target)
+        if self.derivative_weight <= 0.0:
+            return value_loss
+
+        if surrogate_grad is None:
+            surrogate_grad = _compute_grad(surrogate_output, inputs)
+        if target_grad is None:
+            target_grad = _compute_grad(target, inputs)
+
+        grad_loss = F.mse_loss(surrogate_grad, target_grad)
+        return value_loss + self.derivative_weight * grad_loss
+
+
+def _compute_grad(output: torch.Tensor, inputs: torch.Tensor) -> torch.Tensor:
+    """Compute ∂output/∂inputs, summed over the output dimension."""
+    grad = torch.autograd.grad(
+        outputs=output,
+        inputs=inputs,
+        grad_outputs=torch.ones_like(output),
+        create_graph=True,
+    )[0]
+    return grad
+
+
+def _finite_diff_grad(
+    surrogate: SurrogateBase,
+    x: torch.Tensor,
+    eps: float = 1e-4,
+) -> torch.Tensor:
+    """Approximate ∂surrogate/∂x via central finite differences."""
+    x = x.detach()
+    was_training = surrogate.training
+    surrogate.eval()
+    with torch.no_grad():
+        output_plus = surrogate(x + eps)
+        output_minus = surrogate(x - eps)
+        if isinstance(output_plus, dict):
+            output_plus = next(iter(output_plus.values()))
+        if isinstance(output_minus, dict):
+            output_minus = next(iter(output_minus.values()))
+        grad = (output_plus - output_minus) / (2.0 * eps)
+    if was_training:
+        surrogate.train()
+    return grad
+
+
+def gradient_fidelity_score(
+    surrogate: SurrogateBase,
+    inputs: torch.Tensor,
+    true_grad_fn: Callable[[torch.Tensor], torch.Tensor],
+) -> dict[str, float]:
+    """Evaluate how well the surrogate's gradients match ground truth.
+
+    Args:
+        surrogate: A trained (or untrained) surrogate.
+        inputs: Batch of input tensors (``requires_grad`` will be enabled).
+        true_grad_fn: Callable returning the true ∂y/∂x for a given input.
+
+    Returns:
+        Dict with ``cosine_similarity``, ``relative_error``, and
+        ``max_absolute_error``.
+    """
+    surrogate.eval()
+    # Determine network dtype from first parameter, default float32
+    net = surrogate.get_network()
+    try:
+        net_dtype = next(net.parameters()).dtype
+    except StopIteration:
+        net_dtype = torch.float32
+
+    x = inputs.detach().to(device=surrogate.device, dtype=net_dtype).requires_grad_(True)
+
+    output = surrogate(x)
+    if isinstance(output, dict):
+        output = next(iter(output.values()))
+
+    surrogate_grad = _compute_grad(output, x).to(torch.float64)
+    true_grad = true_grad_fn(inputs.detach().to(surrogate.device)).to(torch.float64)
+
+    flat_sg = surrogate_grad.flatten()
+    flat_tg = true_grad.flatten()
+
+    cosine_sim = F.cosine_similarity(flat_sg.unsqueeze(0), flat_tg.unsqueeze(0)).item()
+
+    tg_norm = flat_tg.norm().item()
+    relative_error = (
+        (flat_sg - flat_tg).norm().item() / (tg_norm + 1e-30)
+        if tg_norm > 0
+        else 0.0
+    )
+
+    max_abs_error = (flat_sg - flat_tg).abs().max().item()
+
+    return {
+        "cosine_similarity": cosine_sim,
+        "relative_error": relative_error,
+        "max_absolute_error": max_abs_error,
+    }
 
 
 class SurrogateTrainer:
@@ -65,6 +200,8 @@ class SurrogateTrainer:
         num_workers: int = 0,
         pin_memory: bool = False,
         loss_weights: dict[str, float] | None = None,
+        derivative_weight: float = 0.0,
+        target_grad_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> list[float]:
         inputs, targets = self.surrogate.generate_training_data(n_samples)
 
@@ -76,15 +213,35 @@ class SurrogateTrainer:
             pin_memory=pin_memory,
         )
 
+        use_sobolev = derivative_weight > 0.0
+
         losses = []
         for epoch in range(n_epochs):
             epoch_loss = torch.zeros((), device=self.surrogate.device)
             for batch in loader:
                 batch_x = batch[0].to(self.surrogate.device)
                 self.optimizer.zero_grad()
+
+                if use_sobolev:
+                    batch_x = batch_x.detach().requires_grad_(True)
+
                 output = self.surrogate(batch_x)
 
-                if target_keys is not None:
+                if use_sobolev and target_keys is None:
+                    target_tensor = batch[1].to(self.surrogate.device).detach()
+                    value_loss = torch.nn.functional.mse_loss(output, target_tensor)
+                    surrogate_grad = _compute_grad(output, batch_x)
+
+                    if target_grad_fn is not None:
+                        true_grad = target_grad_fn(batch_x)
+                    else:
+                        true_grad = _finite_diff_grad(
+                            self.surrogate, batch_x.detach()
+                        )
+
+                    grad_loss = torch.nn.functional.mse_loss(surrogate_grad, true_grad)
+                    loss = value_loss + derivative_weight * grad_loss
+                elif target_keys is not None:
                     loss = sum(
                         (loss_weights.get(k, 1.0) if loss_weights else 1.0)
                         * self.loss_fn(output[k], batch[i + 1].to(self.surrogate.device))

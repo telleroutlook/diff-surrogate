@@ -17,7 +17,6 @@ from .base import (
 )
 from .budget import TrainingBudget
 from .cnn import CNNSurrogate
-from .cross_attn import CrossAttnSurrogate
 from .codesign import CoDesignWorkflow, CoupledLoss
 from .convergence import (
     ConvergenceAction,
@@ -25,9 +24,9 @@ from .convergence import (
     ConvergenceMonitor,
     hybrid_z_score,
 )
+from .cross_attn import CrossAttnSurrogate
 from .ensemble import EnsembleSurrogate
 from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
-from .sdf_trunk import SDFTrunkSurrogate
 from .multifidelity import (
     MultiFidelityConfig,
     MultiFidelityResult,
@@ -39,7 +38,8 @@ from .robust_design import (
     CornerSpec,
     robust_design_step,
 )
-from .trainer import SurrogateTrainer
+from .sdf_trunk import SDFTrunkSurrogate
+from .trainer import SobolevLoss, SurrogateTrainer, gradient_fidelity_score
 
 __all__ = [
     "AdaptiveCorrectionPolicy",
@@ -52,19 +52,20 @@ __all__ = [
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
-    "CrossAttnSurrogate",
     "CornerSpec",
     "CorrectionAction",
     "CorrectionPolicy",
     "CoupledLoss",
+    "CrossAttnSurrogate",
     "EnsembleSurrogate",
     "FabricableSubspaceProjection",
     "MLPSurrogate",
     "MonotoneMLP",
-    "SDFTrunkSurrogate",
     "MultiFidelityConfig",
     "MultiFidelityResult",
     "PositiveOutputMLP",
+    "SDFTrunkSurrogate",
+    "SobolevLoss",
     "SurrogateBase",
     "SurrogateStats",
     "SurrogateTrainer",
@@ -73,6 +74,7 @@ __all__ = [
     "axial_samples",
     "correlated_perturbation",
     "geometry",
+    "gradient_fidelity_score",
     "hybrid_z_score",
     "interop",
     "optimize_multifidelity",
