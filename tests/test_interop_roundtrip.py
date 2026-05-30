@@ -8,7 +8,7 @@ import torch
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 
-from diff_surrogate.interop import JAXFunctionWrapper, j2t, t2j, wrap_jax_fn  # noqa: E402
+from diff_surrogate.interop import j2t, t2j, wrap_jax_fn  # noqa: E402
 
 
 class TestRoundTripValues:

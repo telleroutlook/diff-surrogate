@@ -9,11 +9,10 @@ repos are not installed (e.g. in diff-surrogate standalone CI).
 
 from __future__ import annotations
 
-import torch
 import pytest
+import torch
 
 import diff_surrogate
-
 
 # ---------------------------------------------------------------------------
 # Version pin smoke tests
@@ -144,9 +143,6 @@ class TestCoDesignGradientFlow:
             layer_thicknesses=torch.tensor([0.05]),
             layer_eps=torch.tensor([2.25]),
         )
-        params = torch.rand(2, 2, requires_grad=True)
-        # RCWA may not accept arbitrary params directly, so just verify
-        # the solver object exists and is differentiable-friendly.
         assert solver is not None
 
     def test_with_diffcfd_solver(self):
