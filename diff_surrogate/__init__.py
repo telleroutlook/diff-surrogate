@@ -31,6 +31,15 @@ from .conformal import (
 )
 from .cross_attn import CrossAttnSurrogate
 from .ensemble import EnsembleSurrogate
+from .generative import (
+    CandidateSampler,
+    CandidateScorer,
+    CompositeScorer,
+    EnergyBasedSampler,
+    GenerativePipeline,
+    SurrogateScorer,
+    VAESampler,
+)
 from .mlp import Constraint, MLPSurrogate, MonotoneMLP, PositiveOutputMLP
 from .pretraining import (
     FewShotFinetuner,
@@ -82,6 +91,10 @@ __all__ = [
     "CorrectionPolicy",
     "CoupledLoss",
     "CrossAttnSurrogate",
+    "CandidateSampler",
+    "CandidateScorer",
+    "CompositeScorer",
+    "EnergyBasedSampler",
     "EnsembleSurrogate",
     "FabricableSubspaceProjection",
     "MLPSurrogate",
@@ -98,6 +111,7 @@ __all__ = [
     "MultiFidelityResult",
     "PositiveOutputMLP",
     "SDFTrunkSurrogate",
+    "SurrogateScorer",
     "SobolevLoss",
     "ConservationLoss",
     "DivergenceConservingProjection",
@@ -108,6 +122,8 @@ __all__ = [
     "SurrogateBase",
     "SurrogateStats",
     "SurrogateTrainer",
+    "GenerativePipeline",
+    "VAESampler",
     "TrainingBudget",
     "TruthMode",
     "axial_samples",
