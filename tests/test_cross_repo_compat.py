@@ -241,7 +241,7 @@ class TestVersionCompat:
     """Verify runtime version compatibility."""
 
     def test_diff_surrogate_version(self):
-        assert diff_surrogate.__version__ == "0.2.0"
+        assert diff_surrogate.__version__ == "0.3.0"
 
     def test_diff_surrogate_commit(self):
         assert isinstance(diff_surrogate.__version__, str)
