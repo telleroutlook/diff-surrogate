@@ -441,7 +441,29 @@ Training (diff_surrogate.training):
 
 Active Learning (diff_surrogate.active):
 ├── ActiveSampler             — uncertainty/gradient-based point selection (S7.3)
-└── MultiFidelityLearner      — adaptive fidelity scheduling with budget tracking (S7.3)
+├── MultiFidelityLearner      — adaptive fidelity scheduling with budget tracking (S7.3)
+└── UncertaintyTriggeredSampler — conformal-coverage-driven sampling (S8.1)
+
+Conformal (diff_surrogate.conformal):
+├── SplitConformalPredictor   — distribution-free coverage prediction intervals (S8.1)
+└── RiskControllingQuantile   — adaptive risk-controlled quantile (S8.1)
+
+Operators (diff_surrogate.operators):
+├── DivergenceConservingProjection — Chorin-style divergence-free projection (S8.2)
+├── FluxConservingLinear      — flux-conserving linear solver (S8.2)
+└── ConservationLoss          — penalizes nonzero divergence (S8.2)
+
+Transfer (diff_surrogate.transfer):
+├── MultiTaskPretrainer       — multi-task PDE pretraining (S8.3)
+├── FewShotFinetuner          — few-shot target task fine-tuning (S8.3)
+├── TransferBenchmark         — transfer vs from-scratch comparison (S8.3)
+└── TaskGenerator             — toy PDE task generators (S8.3)
+
+Generative (diff_surrogate.generative):
+├── CandidateSampler / CandidateScorer — protocols for candidate generation (S8.4)
+├── VAESampler                — VAE-based candidate sampling (S8.4)
+├── EnergyBasedSampler        — energy-based refinement (S8.4)
+└── GenerativePipeline        — end-to-end sample-score-select pipeline (S8.4)
 
 Interop (diff_surrogate.interop):
 ├── j2t / t2j                 — zero-copy JAX <-> PyTorch via dlpack
@@ -540,6 +562,145 @@ python benchmarks/run_codesign_benchmarks.py --seed-start 0 # start from seed 0
 ```
 
 Results are written to `benchmarks/results/`. The full analysis is in `benchmarks/CODESIGN_PREPRINT.md`.
+
+### Conformal Prediction (S8.1)
+
+Split conformal predictor with distribution-free coverage guarantees. Risk-controlling quantile prediction for calibrated uncertainty bands. Integrated with `UncertaintyTriggeredSampler` for active learning driven by conformal coverage.
+
+```python
+from diff_surrogate.conformal import SplitConformalPredictor, RiskControllingQuantile
+from diff_surrogate.active import UncertaintyTriggeredSampler
+
+# Calibrate on held-out data
+predictor = SplitConformalPredictor(base_model=my_surrogate, coverage=0.95)
+predictor.calibrate(x_cal, y_cal)
+
+# Get coverage-guaranteed prediction intervals
+y_mean, y_lower, y_upper = predictor.predict(x_test)
+
+# Risk-controlling quantile for adaptive coverage
+rcq = RiskControllingQuantile(target_risk=0.05)
+rcq.fit(scores)
+
+# Uncertainty-triggered active sampling
+sampler = UncertaintyTriggeredSampler(
+    predictor=predictor,
+    threshold=0.1,  # width threshold to trigger new sample
+)
+new_points = sampler.select(x_pool)
+```
+
+### Structure-Preserving Operators (S8.2)
+
+Conservation-law-preserving linear algebra primitives. Divergence-conserving projection (Chorin-style) and flux-conserving linear solvers prevent unphysical solution drift. Conservation loss monitors residual divergence.
+
+```python
+from diff_surrogate.operators import (
+    DivergenceConservingProjection,
+    FluxConservingLinear,
+    ConservationLoss,
+)
+
+# Chorin-style projection that conserves divergence by construction
+projection = DivergenceConservingProjection(grid=(64, 64))
+u_div_free, p = projection.project(velocity_field)
+
+# Flux-conserving linear solve
+solver = FluxConservingLinear(grid=(64, 64))
+x = solver.solve(rhs, boundary_conditions)
+
+# Monitor conservation violation
+cons_loss = ConservationLoss()
+loss = cons_loss(predicted_field)  # penalizes nonzero divergence
+```
+
+Structure-preserving operators improve accuracy on out-of-distribution geometries where standard operators accumulate conservation errors.
+
+### PDE Pretraining + Transfer (S8.3)
+
+Multi-task PDE pretraining followed by few-shot fine-tuning on target problems. Includes toy PDE task generators for pretraining data.
+
+```python
+from diff_surrogate.transfer import (
+    MultiTaskPretrainer,
+    FewShotFinetuner,
+    TransferBenchmark,
+)
+from diff_surrogate.transfer import TaskGenerator
+
+# Generate pretraining tasks
+tasks = [
+    TaskGenerator("poisson", grid=32),
+    TaskGenerator("diffusion", grid=32),
+    TaskGenerator("advection", grid=32),
+]
+
+# Multi-task pretraining
+pretrainer = MultiTaskPretrainer(
+    model=my_operator,
+    tasks=tasks,
+    n_epochs_per_task=50,
+)
+pretrained_model = pretrainer.train()
+
+# Few-shot fine-tuning on target problem
+finetuner = FewShotFinetuner(
+    model=pretrained_model,
+    n_shot=10,
+    lr=1e-4,
+    freeze_encoder=True,
+)
+finetuned_model = finetuner.train(x_support, y_support)
+
+# Benchmark transfer vs from-scratch
+bench = TransferBenchmark(
+    model_factory=lambda: MyOperator(),
+    pretrain_tasks=tasks,
+    target_task=TaskGenerator("ns_cavity", grid=32),
+    n_shot=10,
+)
+results = bench.run()
+```
+
+### Generative Prior Interface (S8.4)
+
+Protocol-based interface for generative model candidate sampling. Provides `CandidateSampler`/`CandidateScorer` protocols, built-in VAE and energy-based samplers, and end-to-end `GenerativePipeline`.
+
+```python
+from diff_surrogate.generative import (
+    CandidateSampler,
+    CandidateScorer,
+    VAESampler,
+    EnergyBasedSampler,
+    GenerativePipeline,
+)
+
+# VAE-based candidate generation
+vae_sampler = VAESampler(
+    latent_dim=32,
+    encoder_dims=[128, 64],
+    decoder_dims=[64, 128],
+    output_shape=(64, 64),
+)
+candidates = vae_sampler.sample(n=100)
+
+# Energy-based refinement
+ebm_scorer = EnergyBasedSampler(
+    energy_fn=physics_energy,  # differentiable physics objective
+    n_steps=50,
+    step_size=0.01,
+)
+refined = ebm_scorer.refine(candidates)
+
+# End-to-end pipeline
+pipeline = GenerativePipeline(
+    sampler=vae_sampler,
+    scorer=ebm_scorer,
+    n_candidates=100,
+    top_k=10,
+)
+top_designs = pipeline.generate()  # top-k candidates by score
+```
 
 ## Related Work
 
