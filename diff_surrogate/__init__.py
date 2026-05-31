@@ -60,6 +60,12 @@ from .flow_operator import (
     P2VAEDecoder,
     P2VAEEncoder,
 )
+from .in_context import (
+    ContextPairEncoder,
+    InContextAttention,
+    InContextBenchmark,
+    InContextOperator,
+)
 from .ensemble import EnsembleSurrogate
 from .generative import (
     CandidateSampler,
@@ -134,6 +140,7 @@ __all__ = [
     "ConvergenceAction",
     "ConvergenceConfig",
     "ConvergenceMonitor",
+    "ContextPairEncoder",
     "CornerSpec",
     "CorrectionAction",
     "CorrectionPolicy",
@@ -158,6 +165,9 @@ __all__ = [
     "FlowOperatorBenchmark",
     "FluxConservingLinear",
     "GenerativePipeline",
+    "InContextAttention",
+    "InContextBenchmark",
+    "InContextOperator",
     "LocationScaleFlowKernel",
     "MLPSurrogate",
     "MonotoneMLP",
