@@ -16,6 +16,12 @@ from .base import (
     SurrogateStats,
 )
 from .budget import TrainingBudget
+from .codomain import (
+    AdapterHead,
+    CodomainBackbone,
+    CodomainPretrainer,
+    CodomainTransferBenchmark,
+)
 from .cnn import CNNSurrogate
 from .codesign import CoDesignWorkflow, CoupledLoss
 from .conformal import (
@@ -79,9 +85,13 @@ __all__ = [
     "AdaptiveRobustOptimizer",
     "AntitheticConfig",
     "CNNSurrogate",
+    "AdapterHead",
     "CandidateSampler",
     "CandidateScorer",
     "CoDesignWorkflow",
+    "CodomainBackbone",
+    "CodomainPretrainer",
+    "CodomainTransferBenchmark",
     "CompositeScorer",
     "ConservationLoss",
     "Constraint",
