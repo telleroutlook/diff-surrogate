@@ -7,7 +7,6 @@ References:
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
 
 import torch
 import torch.nn as nn
@@ -164,7 +163,9 @@ class PNOConformalPipeline:
             for batch in train_loader:
                 x, target = batch[0], batch[1]
                 optimizer.zero_grad()
-                loss = self.surrogate.loss(x, target, scoring_rule=scoring_rule, n_samples=n_samples)
+                loss = self.surrogate.loss(
+                    x, target, scoring_rule=scoring_rule, n_samples=n_samples
+                )
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
@@ -247,7 +248,9 @@ class PNOBenchmark:
         results: dict[str, dict] = {}
 
         # --- PNO + conformal ---
-        pno_results: dict[str, list[float]] = {"id_coverage": [], "id_bandwidth": [], "ood_coverage": []}
+        pno_results: dict[str, list[float]] = {
+            "id_coverage": [], "id_bandwidth": [], "ood_coverage": []
+        }
         for seed in range(n_seeds):
             torch.manual_seed(seed)
             pno = copy.deepcopy(surrogate)
@@ -263,9 +266,15 @@ class PNOBenchmark:
             id_pred = pipeline.predict(test_x, alpha=alpha)
             ood_pred = pipeline.predict(ood_x, alpha=alpha)
 
-            id_cov = ((test_y >= id_pred["conformal_lower"]) & (test_y <= id_pred["conformal_upper"])).float().mean().item()
+            id_cov = (
+                (test_y >= id_pred["conformal_lower"])
+                & (test_y <= id_pred["conformal_upper"])
+            ).float().mean().item()
             id_bw = (id_pred["conformal_upper"] - id_pred["conformal_lower"]).mean().item()
-            ood_cov = ((ood_y >= ood_pred["conformal_lower"]) & (ood_y <= ood_pred["conformal_upper"])).float().mean().item()
+            ood_cov = (
+                (ood_y >= ood_pred["conformal_lower"])
+                & (ood_y <= ood_pred["conformal_upper"])
+            ).float().mean().item()
 
             pno_results["id_coverage"].append(id_cov)
             pno_results["id_bandwidth"].append(id_bw)
@@ -274,7 +283,9 @@ class PNOBenchmark:
         results["pno_conformal"] = {k: sum(v) / len(v) for k, v in pno_results.items()}
 
         # --- Ensemble + conformal ---
-        ens_results: dict[str, list[float]] = {"id_coverage": [], "id_bandwidth": [], "ood_coverage": []}
+        ens_results: dict[str, list[float]] = {
+            "id_coverage": [], "id_bandwidth": [], "ood_coverage": []
+        }
         for seed in range(n_seeds):
             torch.manual_seed(seed)
             in_dim = train_x.shape[-1]
@@ -310,7 +321,9 @@ class PNOBenchmark:
         results["ensemble_conformal"] = {k: sum(v) / len(v) for k, v in ens_results.items()}
 
         # --- Pure conformal on point predictions ---
-        point_results: dict[str, list[float]] = {"id_coverage": [], "id_bandwidth": [], "ood_coverage": []}
+        point_results: dict[str, list[float]] = {
+            "id_coverage": [], "id_bandwidth": [], "ood_coverage": []
+        }
         for seed in range(n_seeds):
             torch.manual_seed(seed)
             point_net = nn.Sequential(

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -28,15 +27,15 @@ class AcceptRejectGate:
     """Rejects candidates whose conformal bands exceed tolerances."""
 
     min_coverage: float = 0.9
-    max_bandwidth: Optional[float] = None
-    min_threshold: Optional[float] = None
+    max_bandwidth: float | None = None
+    min_threshold: float | None = None
 
     def evaluate(
         self,
         predictions: Tensor,
         lower: Tensor,
         upper: Tensor,
-        coverage: Optional[float] = None,
+        coverage: float | None = None,
     ) -> tuple[DecisionVerdict, dict[str, str | float | bool]]:
         bandwidth = (upper - lower).abs()
         if bandwidth.ndim > 1:
@@ -60,10 +59,7 @@ class AcceptRejectGate:
             reasons["bandwidth_exceeded"] = True
 
         if self.min_threshold is not None:
-            if lower.ndim > 1:
-                lb = lower.min(dim=-1).values
-            else:
-                lb = lower
+            lb = lower.min(dim=-1).values if lower.ndim > 1 else lower
             if (lb < self.min_threshold).any():
                 verdict = DecisionVerdict.REJECT
                 reasons["below_min_threshold"] = True
@@ -179,7 +175,7 @@ class DecisionGate:
         lower: Tensor,
         upper: Tensor,
         iteration: int,
-        coverage: Optional[float] = None,
+        coverage: float | None = None,
     ) -> tuple[DecisionVerdict, dict]:
         verdict, reasons = self.accept_reject.evaluate(
             predictions, lower, upper, coverage=coverage
@@ -242,16 +238,13 @@ class MultiCandidateDecision:
         verdicts: list[DecisionVerdict] = []
 
         for i in range(n):
-            bw = (uppers[i] - lowers[i]).abs().mean().item()
+            (uppers[i] - lowers[i]).abs().mean().item()
             if maximize:
                 scores[i] = lowers[i].mean().item()
             else:
                 scores[i] = uppers[i].mean().item()
             verdicts.append(DecisionVerdict.ACCEPT)
 
-        if maximize:
-            best_idx = scores.argmax().item()
-        else:
-            best_idx = scores.argmin().item()
+        best_idx = scores.argmax().item() if maximize else scores.argmin().item()
 
         return int(best_idx), scores, verdicts

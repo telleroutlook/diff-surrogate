@@ -8,7 +8,6 @@ References:
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
 
 import torch
 import torch.nn as nn
@@ -270,7 +269,7 @@ class CodomainPretrainer:
             n_steps = 0
             for fields, field_names in batches:
                 fields = fields.to(self.device)
-                B, N, S = fields.shape
+                B, N, _S = fields.shape
 
                 n_mask = max(1, int(N * self.mask_ratio))
                 mask = torch.ones(B, N, dtype=torch.bool, device=self.device)

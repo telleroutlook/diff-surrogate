@@ -1,7 +1,6 @@
 """Tests for codomain-attention backbone (S9.1)."""
 
 import torch
-import torch.nn as nn
 
 from diff_surrogate.codomain import (
     AdapterHead,

@@ -6,8 +6,8 @@ import torch
 
 from diff_surrogate.decision import (
     AcceptRejectGate,
-    CVaRRiskBudget,
     CoverageTriggeredEarlyStop,
+    CVaRRiskBudget,
     DecisionGate,
     DecisionVerdict,
     MultiCandidateDecision,
@@ -103,7 +103,7 @@ def test_early_stop_continues_when_not_converged():
     )
     coverage = [0.90, 0.92, 0.93]
     bandwidth = [1.0, 0.8, 0.6]
-    should, reason = stopper.should_stop(2, coverage, bandwidth)
+    should, _reason = stopper.should_stop(2, coverage, bandwidth)
     assert not should
 
 
@@ -135,7 +135,7 @@ def test_decision_gate_rejects_on_risk():
     pred = torch.tensor([5.0])
     lower = torch.tensor([4.9])
     upper = torch.tensor([5.1])
-    verdict, metrics = gate.evaluate_candidate(pred, lower, upper, iteration=1)
+    verdict, _metrics = gate.evaluate_candidate(pred, lower, upper, iteration=1)
     assert verdict == DecisionVerdict.REJECT
 
 
@@ -186,7 +186,7 @@ def test_multi_candidate_minimize():
     lowers = torch.tensor([2.0, 4.0, 1.0, 3.0])
     uppers = torch.tensor([4.0, 6.0, 3.0, 5.0])
 
-    best_idx, scores, verdicts = selector.select(
+    best_idx, scores, _verdicts = selector.select(
         candidates, predictions, lowers, uppers, maximize=False
     )
     assert best_idx == 2
@@ -202,7 +202,10 @@ def test_deterministic_with_seed():
     uppers = preds + 0.5
 
     torch.manual_seed(123)
-    best2, scores2, _ = selector.select(cands.clone(), preds.clone(), lowers.clone(), uppers.clone(), maximize=True)
+    best2, scores2, _ = selector.select(
+        cands.clone(), preds.clone(), lowers.clone(), uppers.clone(),
+        maximize=True,
+    )
     best1, scores1, _ = selector.select(cands, preds, lowers, uppers, maximize=True)
 
     assert best1 == best2

@@ -142,7 +142,10 @@ def test_pno_conformal_pipeline_predict_keys():
     pipeline.calibrate_conformal(cal_mean, y, alpha=0.1)
 
     result = pipeline.predict(torch.randn(5, 1))
-    expected_keys = {"mean", "scale", "pno_lower", "pno_upper", "conformal_lower", "conformal_upper"}
+    expected_keys = {
+        "mean", "scale", "pno_lower", "pno_upper",
+        "conformal_lower", "conformal_upper",
+    }
     assert expected_keys.issubset(result.keys())
 
 
