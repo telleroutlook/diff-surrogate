@@ -81,9 +81,7 @@ def _bwd_dx(x: Tensor, h: float = 1.0) -> Tensor:
 # ---------------------------------------------------------------------------
 
 
-def discrete_gradient(
-    scalar_field: Tensor, grid_spacing: float | Tensor = 1.0
-) -> Tensor:
+def discrete_gradient(scalar_field: Tensor, grid_spacing: float | Tensor = 1.0) -> Tensor:
     """Discrete gradient of a scalar field on a regular 2-D grid.
 
     Uses forward differences with replication padding at the far boundary.
@@ -109,9 +107,7 @@ def discrete_gradient(
     return torch.stack([du_dy, du_dx], dim=-1)
 
 
-def discrete_divergence(
-    field: Tensor, grid_spacing: float | Tensor = 1.0
-) -> Tensor:
+def discrete_divergence(field: Tensor, grid_spacing: float | Tensor = 1.0) -> Tensor:
     """Discrete divergence of a 2-D vector field on a regular grid.
 
     Uses backward differences with zero padding at the near boundary.
@@ -153,9 +149,9 @@ def _laplacian_2d(x: Tensor) -> Tensor:
     """
     p = F.pad(x, (1, 1, 1, 1), mode="replicate")
     return (
-        p[:, 1:-1, 2:]    # right
+        p[:, 1:-1, 2:]  # right
         + p[:, 1:-1, :-2]  # left
-        + p[:, 2:, 1:-1]   # down
+        + p[:, 2:, 1:-1]  # down
         + p[:, :-2, 1:-1]  # up
         - 4.0 * x
     )
@@ -199,9 +195,7 @@ class DivergenceConservingProjection(nn.Module):
         self.max_iter = max_iter if method == "iterative" else max(max_iter * 3, 300)
         self.tol = tol
 
-    def forward(
-        self, field: Tensor, div_target: Tensor | None = None
-    ) -> Tensor:
+    def forward(self, field: Tensor, div_target: Tensor | None = None) -> Tensor:
         """Project field onto divergence-free (or prescribed divergence) space.
 
         Args:
@@ -258,28 +252,18 @@ class DivergenceConservingProjection(nn.Module):
 
         for _ in range(self.max_iter):
             p = F.pad(phi, (1, 1, 1, 1), mode="replicate")
-            phi = (
-                p[:, 1:-1, 2:] + p[:, 1:-1, :-2]
-                + p[:, 2:, 1:-1] + p[:, :-2, 1:-1]
-                - rhs
-            ) / 4.0
+            phi = (p[:, 1:-1, 2:] + p[:, 1:-1, :-2] + p[:, 2:, 1:-1] + p[:, :-2, 1:-1] - rhs) / 4.0
 
         return phi
 
-    def _project_unstructured(
-        self, field: Tensor, div_target: Tensor | None
-    ) -> Tensor:
+    def _project_unstructured(self, field: Tensor, div_target: Tensor | None) -> Tensor:
         """Project ``(B, N, C)`` unstructured field by mean-subtraction."""
         mean_per_comp = field.mean(dim=1, keepdim=True)
 
         if div_target is None:
             return field - mean_per_comp
         else:
-            dt = (
-                div_target.unsqueeze(0).unsqueeze(0)
-                if div_target.ndim == 1
-                else div_target
-            )
+            dt = div_target.unsqueeze(0).unsqueeze(0) if div_target.ndim == 1 else div_target
             return field - mean_per_comp + dt.expand_as(mean_per_comp)
 
 
@@ -305,9 +289,7 @@ class FluxConservingLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-    def forward(
-        self, x: Tensor, node_volumes: Tensor | None = None
-    ) -> Tensor:
+    def forward(self, x: Tensor, node_volumes: Tensor | None = None) -> Tensor:
         squeeze = False
         if x.ndim == 2:
             x = x.unsqueeze(0)
@@ -368,10 +350,10 @@ class ConservationLoss(nn.Module):
             d1, d2, d3 = field.shape[1], field.shape[2], field.shape[3]
             field_hwc = field.permute(0, 2, 3, 1) if d1 <= 4 and d1 < d2 and d1 < d3 else field
             div = discrete_divergence(field_hwc, grid_spacing=grid_spacing)
-            return (div ** 2).mean()
+            return (div**2).mean()
         elif field.ndim == 3:
             mean_val = field.mean(dim=1)
-            return (mean_val ** 2).mean()
+            return (mean_val**2).mean()
         else:
             raise ValueError(f"field must be 3-D or 4-D, got {field.ndim}-D")
 
@@ -401,15 +383,11 @@ class StructurePreservingEncoder(nn.Module):
         super().__init__()
         from .geometry.pointcloud import IrregularMeshEncoder
 
-        self.encoder = IrregularMeshEncoder(
-            in_dim=in_dim, embed_dim=embed_dim, scales=scales
-        )
+        self.encoder = IrregularMeshEncoder(in_dim=in_dim, embed_dim=embed_dim, scales=scales)
         self.projection = DivergenceConservingProjection(method=projection_method)
         self.embed_dim = embed_dim
 
-    def forward(
-        self, points: Tensor, features: Tensor | None = None
-    ) -> Tensor:
+    def forward(self, points: Tensor, features: Tensor | None = None) -> Tensor:
         output = self.encoder(points, features)
 
         if output.ndim == 1:

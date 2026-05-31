@@ -133,11 +133,7 @@ def gradient_fidelity_score(
     cosine_sim = F.cosine_similarity(flat_sg.unsqueeze(0), flat_tg.unsqueeze(0)).item()
 
     tg_norm = flat_tg.norm().item()
-    relative_error = (
-        (flat_sg - flat_tg).norm().item() / (tg_norm + 1e-30)
-        if tg_norm > 0
-        else 0.0
-    )
+    relative_error = (flat_sg - flat_tg).norm().item() / (tg_norm + 1e-30) if tg_norm > 0 else 0.0
 
     max_abs_error = (flat_sg - flat_tg).abs().max().item()
 
@@ -235,9 +231,7 @@ class SurrogateTrainer:
                     if target_grad_fn is not None:
                         true_grad = target_grad_fn(batch_x)
                     else:
-                        true_grad = _finite_diff_grad(
-                            self.surrogate, batch_x.detach()
-                        )
+                        true_grad = _finite_diff_grad(self.surrogate, batch_x.detach())
 
                     grad_loss = torch.nn.functional.mse_loss(surrogate_grad, true_grad)
                     loss = value_loss + derivative_weight * grad_loss

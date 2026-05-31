@@ -358,9 +358,7 @@ class GenerativePipeline:
         candidates = self.sampler.sample(condition, n_candidates)
 
         n = candidates.shape[0]
-        scores = torch.stack(
-            [self.scorer.score(candidates[i], condition) for i in range(n)]
-        )
+        scores = torch.stack([self.scorer.score(candidates[i], condition) for i in range(n)])
 
         ranking = self.scorer.rank(candidates, condition)
         top_indices = ranking[:top_k]
@@ -375,9 +373,7 @@ class GenerativePipeline:
         }
 
         if self.refiner is not None:
-            refined = torch.stack(
-                [self.refiner(candidates[idx], condition) for idx in top_indices]
-            )
+            refined = torch.stack([self.refiner(candidates[idx], condition) for idx in top_indices])
             result["refined"] = refined
 
         return result

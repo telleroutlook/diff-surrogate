@@ -16,6 +16,7 @@ from diff_surrogate.pretraining import (
 
 # ---- helpers ----
 
+
 def _encoder_factory():
     return PDENet(input_dim=64, hidden_dim=32, output_dim=1, n_layers=2)
 
@@ -31,6 +32,7 @@ def _make_tasks(n_tasks=4, n_samples=40, n_grid=64):
 
 
 # ---- tests ----
+
 
 def test_task_generators_produce_valid_data():
     """All four PDE task generators produce tensors with correct shapes."""
@@ -84,7 +86,8 @@ def test_few_shot_finetuner_gradient_exists():
     # Run one step manually to verify gradient flow
     ft.encoder.train()
     optimizer = torch.optim.Adam(
-        list(ft.encoder.parameters()) + list(ft.head.parameters()), lr=1e-3,
+        list(ft.encoder.parameters()) + list(ft.head.parameters()),
+        lr=1e-3,
     )
     optimizer.zero_grad()
     features = ft.encoder.encode(inputs)
@@ -93,10 +96,7 @@ def test_few_shot_finetuner_gradient_exists():
     loss.backward()
 
     # At least one param in head should have non-zero grad
-    has_grad = any(
-        p.grad is not None and p.grad.abs().sum() > 0
-        for p in ft.head.parameters()
-    )
+    has_grad = any(p.grad is not None and p.grad.abs().sum() > 0 for p in ft.head.parameters())
     assert has_grad, "No gradient in finetuner head"
 
     # Also test the finetune method returns history

@@ -22,9 +22,7 @@ class _QuadraticSurrogate(SurrogateBase):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.get_network()(x)
 
-    def generate_training_data(
-        self, n_samples: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         x = torch.linspace(-2.0, 2.0, n_samples).unsqueeze(-1)
         y = x**2
         return x, y
@@ -49,9 +47,7 @@ class _SinSurrogate(SurrogateBase):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.get_network()(x)
 
-    def generate_training_data(
-        self, n_samples: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def generate_training_data(self, n_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         x = torch.linspace(-3.14, 3.14, n_samples).unsqueeze(-1)
         y = torch.sin(x)
         return x, y
@@ -104,6 +100,7 @@ def test_sobolev_loss_with_derivative_weight_zero():
 def test_gradient_fidelity_metric():
     """For y = x^2 the true gradient is 2x; metric should be near-perfect."""
     surr = _QuadraticSurrogate()
+
     # Replace the network with one that computes x^2 exactly
     class _ExactSquare(nn.Module):
         def forward(self, x):
@@ -118,9 +115,7 @@ def test_gradient_fidelity_metric():
     assert result["cosine_similarity"] > 0.9999, (
         f"cosine_similarity too low: {result['cosine_similarity']}"
     )
-    assert result["relative_error"] < 1e-4, (
-        f"relative_error too high: {result['relative_error']}"
-    )
+    assert result["relative_error"] < 1e-4, f"relative_error too high: {result['relative_error']}"
 
 
 # ---------------------------------------------------------------------------

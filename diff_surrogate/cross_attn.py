@@ -139,7 +139,7 @@ class _CrossAttention(nn.Module):
         q = queries.reshape(B, self.n_heads, n_out, self.head_dim)
 
         # Scaled dot-product: (B, n_heads, n_out, H*W)
-        scale = (self.head_dim ** 0.5)
+        scale = self.head_dim**0.5
         attn = torch.matmul(q, k) / scale
         attn = torch.softmax(attn, dim=-1)
 
@@ -209,12 +209,14 @@ class CrossAttnSurrogate(SurrogateBase):
         )
         # Output head: per-output scalar field from attended features + spatial basis
         spatial_head = nn.Conv2d(self.hidden_dim * 2, self.n_outputs, 1)
-        return nn.ModuleDict({
-            "geom_enc": geom_enc,
-            "phys_enc": phys_enc,
-            "cross_attn": cross_attn,
-            "spatial_head": spatial_head,
-        })
+        return nn.ModuleDict(
+            {
+                "geom_enc": geom_enc,
+                "phys_enc": phys_enc,
+                "cross_attn": cross_attn,
+                "spatial_head": spatial_head,
+            }
+        )
 
     def forward(self, x: tuple[Tensor, Tensor] | Tensor) -> Tensor:
         """Predict output fields from SDF geometry and physics parameters.
@@ -254,7 +256,7 @@ class CrossAttnSurrogate(SurrogateBase):
         attended_spatial = attended.reshape(B, -1, 1, 1).expand(-1, -1, H, W)
 
         # Combine with geometry features: cat along channel dim
-        combined = torch.cat([keys, attended_spatial[:, :self.hidden_dim]], dim=1)
+        combined = torch.cat([keys, attended_spatial[:, : self.hidden_dim]], dim=1)
         output = spatial_head(combined)
         return output
 

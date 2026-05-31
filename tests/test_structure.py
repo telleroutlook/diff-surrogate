@@ -66,7 +66,7 @@ def test_discrete_divergence_analytical():
     interior = (slice(None), slice(2, -2), slice(2, -2))
     diff = (div[interior] - analytical[None, 2:-2, 2:-2]).abs()
     assert diff.max() < 2 * h + 1e-10, (
-        f"Divergence mismatch: max error = {diff.max().item():.6f}, expected ~{2*h}"
+        f"Divergence mismatch: max error = {diff.max().item():.6f}, expected ~{2 * h}"
     )
 
 

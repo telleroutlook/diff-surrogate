@@ -143,7 +143,9 @@ def test_calibrated_bandwidth_better_than_raw_ensemble():
     cal_x = torch.linspace(-2.0, 2.0, 80).unsqueeze(-1)
     cal_targets = _quadratic(cal_x)
     sampler = UncertaintyTriggeredSampler(
-        ensemble=ensemble, input_bounds=bounds, n_candidates=200,
+        ensemble=ensemble,
+        input_bounds=bounds,
+        n_candidates=200,
     )
     sampler.calibrate_uncertainty(cal_x, {"value": cal_targets}, alpha=0.1)
 
@@ -244,7 +246,9 @@ def test_sampler_calibrated_suggests_high_uncertainty():
     cal_targets = {"value": _quadratic(cal_x)}
 
     sampler = UncertaintyTriggeredSampler(
-        ensemble=ensemble, input_bounds=bounds, n_candidates=500,
+        ensemble=ensemble,
+        input_bounds=bounds,
+        n_candidates=500,
     )
     sampler.calibrate_uncertainty(cal_x, cal_targets, alpha=0.1)
 

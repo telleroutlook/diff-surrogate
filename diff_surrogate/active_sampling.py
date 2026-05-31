@@ -228,8 +228,7 @@ class UncertaintyTriggeredSampler:
         if isinstance(train_targets, dict):
             if isinstance(new_y, dict):
                 augmented_targets = {
-                    k: torch.cat([train_targets[k], new_y[k].cpu()], dim=0)
-                    for k in train_targets
+                    k: torch.cat([train_targets[k], new_y[k].cpu()], dim=0) for k in train_targets
                 }
             else:
                 first_key = next(iter(train_targets))

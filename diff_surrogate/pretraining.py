@@ -20,6 +20,7 @@ import torch.nn.functional as F
 # Toy PDE task generators
 # ---------------------------------------------------------------------------
 
+
 def task_poisson_1d(n_samples: int, n_grid: int = 64) -> tuple[torch.Tensor, torch.Tensor]:
     """1-D Poisson equation: -u''(x) = f(x) with random source f.
 
@@ -51,7 +52,8 @@ def task_poisson_1d(n_samples: int, n_grid: int = 64) -> tuple[torch.Tensor, tor
 
 
 def task_diffusion_2d(
-    n_samples: int, n_grid: int = 32,
+    n_samples: int,
+    n_grid: int = 32,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """2-D diffusion with random initial condition evolved to t=0.1.
 
@@ -68,7 +70,7 @@ def task_diffusion_2d(
     kx = torch.fft.fftfreq(n_grid, d=1.0 / n_grid)
     ky = torch.fft.fftfreq(n_grid, d=1.0 / n_grid)
     KX, KY = torch.meshgrid(kx, ky, indexing="ij")
-    K2 = KX ** 2 + KY ** 2
+    K2 = KX**2 + KY**2
 
     # Random low-frequency initial condition
     ic = torch.randn(n_samples, n_grid, n_grid)
@@ -80,7 +82,7 @@ def task_diffusion_2d(
     # Evolve with diffusion coeff=0.01 for t=0.1
     diffusivity = 0.01
     t_final = 0.1
-    decay = torch.exp(-diffusivity * 4 * torch.pi ** 2 * K2 * t_final)
+    decay = torch.exp(-diffusivity * 4 * torch.pi**2 * K2 * t_final)
     evolved_f = torch.fft.fft2(ic) * decay.unsqueeze(0)
     evolved = torch.fft.ifft2(evolved_f).real
 
@@ -127,7 +129,8 @@ def task_advection_1d(n_samples: int, n_grid: int = 64) -> tuple[torch.Tensor, t
 
 
 def task_reaction_diffusion_1d(
-    n_samples: int, n_grid: int = 64,
+    n_samples: int,
+    n_grid: int = 64,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """1-D reaction-diffusion: u_t = D*u_xx + k*u*(1-u) (Fisher-KPP).
 
@@ -144,7 +147,7 @@ def task_reaction_diffusion_1d(
     dx = 1.0 / (n_grid - 1)
     D = 0.005
     k = 5.0
-    dt = 0.4 * dx ** 2 / (2 * D)  # CFL-safe
+    dt = 0.4 * dx**2 / (2 * D)  # CFL-safe
     n_steps = 50
 
     x = torch.linspace(0, 1, n_grid)
@@ -157,7 +160,7 @@ def task_reaction_diffusion_1d(
     u = ic.clone()
     for _ in range(n_steps):
         laplacian = torch.zeros_like(u)
-        laplacian[:, 1:-1] = (u[:, 2:] - 2 * u[:, 1:-1] + u[:, :-2]) / dx ** 2
+        laplacian[:, 1:-1] = (u[:, 2:] - 2 * u[:, 1:-1] + u[:, :-2]) / dx**2
         reaction = k * u * (1 - u)
         u = u + dt * (D * laplacian + reaction)
         u = u.clamp(0, 1)
@@ -168,6 +171,7 @@ def task_reaction_diffusion_1d(
 # ---------------------------------------------------------------------------
 # Simple encoder for pretraining experiments
 # ---------------------------------------------------------------------------
+
 
 class PDENet(nn.Module):
     """Simple MLP encoder-decoder for PDE surrogate pretraining.
@@ -182,8 +186,11 @@ class PDENet(nn.Module):
     """
 
     def __init__(
-        self, input_dim: int = 64, hidden_dim: int = 64,
-        output_dim: int = 64, n_layers: int = 3,
+        self,
+        input_dim: int = 64,
+        hidden_dim: int = 64,
+        output_dim: int = 64,
+        n_layers: int = 3,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -206,6 +213,7 @@ class PDENet(nn.Module):
 # ---------------------------------------------------------------------------
 # MultiTaskPretrainer
 # ---------------------------------------------------------------------------
+
 
 class MultiTaskPretrainer:
     """Pre-train a shared encoder on multiple PDE tasks.
@@ -239,9 +247,9 @@ class MultiTaskPretrainer:
             hidden = self.shared_encoder.encode(dummy)
             hidden_dim = hidden.shape[-1]
 
-        self.task_heads = nn.ModuleList([
-            nn.Linear(hidden_dim, 1) for _ in range(n_tasks)
-        ]).to(self.device)
+        self.task_heads = nn.ModuleList([nn.Linear(hidden_dim, 1) for _ in range(n_tasks)]).to(
+            self.device
+        )
         self.task_embeddings = nn.Embedding(n_tasks, task_dim).to(self.device)
         self.task_proj = nn.Linear(task_dim, hidden_dim).to(self.device)
         self.n_tasks = n_tasks
@@ -292,7 +300,7 @@ class MultiTaskPretrainer:
                 n = inputs.shape[0]
                 perm = torch.randperm(n)
                 for start in range(0, n, batch_size):
-                    idx = perm[start:start + batch_size]
+                    idx = perm[start : start + batch_size]
                     batch_x = inputs[idx]
                     batch_y = targets[idx]
 
@@ -322,6 +330,7 @@ class MultiTaskPretrainer:
 # ---------------------------------------------------------------------------
 # FewShotFinetuner
 # ---------------------------------------------------------------------------
+
 
 class FewShotFinetuner:
     """Fine-tune a pretrained encoder on a new task with few samples.
@@ -412,6 +421,7 @@ class FewShotFinetuner:
 # TransferBenchmark
 # ---------------------------------------------------------------------------
 
+
 class TransferBenchmark:
     """Benchmark transfer learning vs training from scratch."""
 
@@ -462,7 +472,9 @@ class TransferBenchmark:
             # --- Pretrained path ---
             pretrain_data = [task_datasets[i] for i in pretrain_tasks]
             pretrainer = MultiTaskPretrainer(
-                encoder_factory, n_tasks=len(pretrain_tasks), device="cpu",
+                encoder_factory,
+                n_tasks=len(pretrain_tasks),
+                device="cpu",
             )
             pretrainer.pretrain(pretrain_data, n_epochs=pretrain_epochs, lr=lr)
             base_encoder = pretrainer.get_pretrained_encoder()
@@ -487,9 +499,7 @@ class TransferBenchmark:
 
                 # Scratch train
                 out_dim = target_targets.shape[-1]
-                scratch_ft = FewShotFinetuner(
-                    scratch_encoder, output_dim=out_dim, device="cpu"
-                )
+                scratch_ft = FewShotFinetuner(scratch_encoder, output_dim=out_dim, device="cpu")
                 scratch_ft.finetune(fs_inputs, fs_targets, n_epochs=finetune_epochs, lr=lr)
                 with torch.no_grad():
                     pred_s = scratch_ft.predict(target_inputs)

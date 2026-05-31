@@ -152,9 +152,7 @@ class PointCloudGeometry(nn.Module):
         self.input_proj = nn.Linear(feat_dim, embed_dim)
 
         # One attention block per scale
-        self.scale_attns = nn.ModuleList(
-            [_ScaleAttention(embed_dim, embed_dim, k) for k in scales]
-        )
+        self.scale_attns = nn.ModuleList([_ScaleAttention(embed_dim, embed_dim, k) for k in scales])
 
         # Project concatenated multi-scale features to output dim
         self.out_proj = nn.Sequential(

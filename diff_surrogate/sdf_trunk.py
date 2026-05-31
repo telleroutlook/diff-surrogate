@@ -35,8 +35,11 @@ class _TrunkNet(nn.Module):
     """
 
     def __init__(
-        self, sdf_dim: int = 1, hidden_dim: int = 128,
-        n_basis: int = 64, n_layers: int = 4,
+        self,
+        sdf_dim: int = 1,
+        hidden_dim: int = 128,
+        n_basis: int = 64,
+        n_layers: int = 4,
     ):
         super().__init__()
         layers = [nn.Linear(sdf_dim, hidden_dim), nn.GELU()]
@@ -188,11 +191,7 @@ class SDFTrunkSurrogate(SurrogateBase):
         output = (basis * coeffs.unsqueeze(1).unsqueeze(1)).sum(dim=-1)
 
         # Reshape to (B, n_outputs, H, W) or (B, n_outputs, N)
-        output = (
-            output.permute(0, -1, 1, 2)
-            if sdf_field.ndim >= 3
-            else output.permute(0, 2, 1)
-        )
+        output = output.permute(0, -1, 1, 2) if sdf_field.ndim >= 3 else output.permute(0, 2, 1)
 
         return output
 
@@ -202,9 +201,7 @@ class SDFTrunkSurrogate(SurrogateBase):
         self.eval()
         with torch.no_grad():
             if isinstance(x, tuple):
-                result = self(
-                    (x[0].to(self.device), x[1].to(self.device))
-                )
+                result = self((x[0].to(self.device), x[1].to(self.device)))
             else:
                 result = self(x.to(self.device))
         if was_training:

@@ -81,9 +81,7 @@ def test_sampler_uncertainty():
     unc_sparse = sampler.compute_uncertainty(sparse_x)
     unc_dense = sampler.compute_uncertainty(dense_x)
 
-    assert unc_sparse.mean() > unc_dense.mean(), (
-        "Uncertainty should be higher in the sparse region"
-    )
+    assert unc_sparse.mean() > unc_dense.mean(), "Uncertainty should be higher in the sparse region"
 
 
 def test_sampler_suggests_diverse():
