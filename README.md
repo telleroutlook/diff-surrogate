@@ -702,6 +702,22 @@ pipeline = GenerativePipeline(
 top_designs = pipeline.generate()  # top-k candidates by score
 ```
 
+## Competitive Positioning
+
+**What it is:** A unified differentiable surrogate framework shared by DiffCFD, DiffNano, and OpenLithoHub — the cross-domain reusable backbone of a multi-physics co-design toolkit.
+
+**Where it leads:**
+- **Cross-domain reusability:** The only surrogate library serving lithography, electromagnetics, CFD, and co-design from one codebase. Most alternatives (FNO, DeepONet, GAOT) target single domains.
+- **Calibrated uncertainty:** Split conformal prediction + risk-controlling quantiles give distribution-free coverage guarantees — rare in physics surrogate libraries.
+- **Structure-preserving operators:** Conservation-law-preserving projections and flux-conserving solvers prevent unphysical drift on out-of-distribution geometries.
+
+**Where it lags (honest assessment):**
+- **Scale:** Toy-to-medium problem sizes, single GPU/CPU. Not comparable to foundation-model-scale operators (GAOT/NeurIPS25, Poseidon) trained on industrial 3D datasets.
+- **Data:** No large-scale pretraining data. Benchmarks are self-measured toy problems.
+- **Validation:** Self-tests + analytical solutions + cross-repo numerical checks. No third-party experimental or production validation.
+
+**Bottom line:** Methodologically current (2024-2026 techniques) but structurally a research prototype. Value is in the cross-domain integration layer, not in beating SOTA on any single benchmark.
+
 ## Related Work
 
 | Method | Venue | Key Idea | Relation to diff-surrogate |
