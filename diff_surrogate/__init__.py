@@ -35,6 +35,14 @@ from .convergence import (
     ConvergenceMonitor,
     hybrid_z_score,
 )
+from .decision import (
+    AcceptRejectGate,
+    CVaRRiskBudget,
+    CoverageTriggeredEarlyStop,
+    DecisionGate,
+    DecisionVerdict,
+    MultiCandidateDecision,
+)
 from .cross_attn import CrossAttnSurrogate
 from .ensemble import EnsembleSurrogate
 from .generative import (
@@ -52,6 +60,14 @@ from .multifidelity import (
     MultiFidelityResult,
     TruthMode,
     optimize_multifidelity,
+)
+from .probabilistic import (
+    CRPSLoss,
+    DistributionHead,
+    EnergyScoreLoss,
+    PNOBenchmark,
+    PNOConformalPipeline,
+    ProbabilisticSurrogate,
 )
 from .pretraining import (
     FewShotFinetuner,
@@ -99,24 +115,36 @@ __all__ = [
     "ConvergenceConfig",
     "ConvergenceMonitor",
     "CornerSpec",
+    "CVaRRiskBudget",
+    "CoverageTriggeredEarlyStop",
     "CorrectionAction",
     "CorrectionPolicy",
     "CoupledLoss",
     "CrossAttnSurrogate",
+    "CRPSLoss",
+    "DecisionGate",
+    "DecisionVerdict",
     "DivergenceConservingProjection",
+    "DistributionHead",
     "EnergyBasedSampler",
+    "EnergyScoreLoss",
     "EnsembleSurrogate",
     "FabricableSubspaceProjection",
     "FewShotFinetuner",
     "FluxConservingLinear",
     "GenerativePipeline",
+    "AcceptRejectGate",
     "MLPSurrogate",
     "MonotoneMLP",
+    "MultiCandidateDecision",
     "MultiFidelityConfig",
     "MultiFidelityResult",
     "MultiTaskPretrainer",
     "PDENet",
+    "PNOBenchmark",
+    "PNOConformalPipeline",
     "PositiveOutputMLP",
+    "ProbabilisticSurrogate",
     "RiskControllingQuantile",
     "SDFTrunkSurrogate",
     "SobolevLoss",
