@@ -2,9 +2,14 @@
 
 Unified differentiable surrogate framework for physics simulations. Shared library used by DiffCFD, DiffNano, and OpenLithoHub.
 
+**Version:** 0.3.0
+
 **Honesty boundaries:**
 - No third-party experimental validation. All benchmarks are self-measured toy problems.
 - Co-design benchmarks include quadratic coupling and B-spline geometry toy problems where decoupled methods match or outperform coupled optimization.
+- GPU benchmarks still require CUDA hardware (no CPU fallback for GPU-timed benchmarks).
+- Cross-validation against external solvers is framework-only: the test harness is provided but no vendored solver data is included.
+- Transfer benchmarks are on toy-scale problems (grid 32, O(100) samples). Scaling to industrial datasets is not validated.
 
 **Known stubs / unimplemented:**
 - No stubs in diff-surrogate core. All surrogate classes (MLP, CNN, Ensemble), correction policies, convergence monitors, and geometry operators are functional.
@@ -465,6 +470,26 @@ Generative (diff_surrogate.generative):
 ├── EnergyBasedSampler        — energy-based refinement (S8.4)
 └── GenerativePipeline        — end-to-end sample-score-select pipeline (S8.4)
 
+Codomain Transfer (diff_surrogate.codomain):
+├── CodomainBackbone          — variable-field neural operator backbone (S9.1)
+├── AdapterHead               — per-domain input/output adapter (S9.1)
+├── CodomainPretrainer        — masked reconstruction pretraining (S9.1)
+└── CodomainTransferBenchmark — transfer vs from-scratch comparison (S9.1)
+
+Probabilistic (diff_surrogate.probabilistic):
+├── ProbabilisticSurrogate    — mean + variance prediction (S9.2)
+├── EnergyScoreLoss           — energy score proper scoring rule (S9.2)
+├── CRPSLoss                  — continuous ranked probability score (S9.2)
+├── PNOConformalPipeline      — dual UQ: PNO + conformal calibration (S9.2)
+└── PNOBenchmark              — probabilistic vs deterministic comparison (S9.2)
+
+Decision (diff_surrogate.decision):
+├── DecisionGate              — base class for uncertainty-to-decision (S9.3)
+├── AcceptRejectGate          — threshold-based accept/reject (S9.3)
+├── CVaRRiskBudget            — CVaR risk budget allocation (S9.3)
+├── CoverageTriggeredEarlyStop — coverage-based early stopping (S9.3)
+└── MultiCandidateDecision    — uncertainty-aware candidate selection (S9.3)
+
 Interop (diff_surrogate.interop):
 ├── j2t / t2j                 — zero-copy JAX <-> PyTorch via dlpack
 └── wrap_jax_fn / JAXFunctionWrapper — autograd-through-JAX via vjp
@@ -478,9 +503,9 @@ Supporting:
 
 | Project | Imports from diff-surrogate | Usage |
 |----------|---------------------------|-------|
-| DiffCFD | CorrectionPolicy, SurrogateStats, ConvergenceAction, geometry.sdf_from_curve | SIMPLE solver correction, topology optimization convergence, airfoil SDF |
-| DiffNano | CorrectionPolicy, SurrogateStats, CoDesignWorkflow, CoupledLoss, geometry.*, adaptive_robust.* | RCWA solver correction, metalens co-design, adaptive robust optimization, B-spline geometry |
-| OpenLithoHub | CorrectionPolicy, ConvergenceMonitor, ConvergenceConfig, ConvergenceAction, hybrid_z_score, CoDesignWorkflow, CoupledLoss | ILT correction and convergence, lithography co-design |
+| DiffCFD | CorrectionPolicy, SurrogateStats, ConvergenceAction, geometry.sdf_from_curve, decision.AcceptRejectGate, decision.CoverageTriggeredEarlyStop | SIMPLE solver correction, topology optimization convergence, airfoil SDF, CFD solution quality gating (C8.4) |
+| DiffNano | CorrectionPolicy, SurrogateStats, CoDesignWorkflow, CoupledLoss, geometry.*, adaptive_robust.*, decision.* | RCWA solver correction, metalens co-design, adaptive robust optimization, B-spline geometry, nanofabrication accept/reject (N9.3) |
+| OpenLithoHub | CorrectionPolicy, ConvergenceMonitor, ConvergenceConfig, ConvergenceAction, hybrid_z_score, CoDesignWorkflow, CoupledLoss, decision.* | ILT correction and convergence, lithography co-design, lithography pass/fail gating (O9.3) |
 
 ## Flagship Evidence Status
 
@@ -498,6 +523,9 @@ Supporting:
 | Point cloud geometry encoder | `diff_surrogate/geometry/pointcloud.py` | `tests/test_pointcloud.py` | Internal | Verified |
 | Active sampling + multi-fidelity learner | `diff_surrogate/active/` | `tests/test_active.py` | Internal | Verified |
 | Cross-repo compatibility (DiffCFD / DiffNano / OpenLithoHub) | `tests/test_cross_repo_compat.py` | `tests/test_cross_repo_compat.py` | N/A (functional) | Verified |
+| Codomain-attention transfer backbone | `diff_surrogate/codomain.py` | `tests/test_codomain.py` | Internal | Verified |
+| Probabilistic neural operator + dual UQ | `diff_surrogate/probabilistic.py` | `tests/test_probabilistic.py` | Internal | Verified |
+| Decision-gate UQ (accept/reject, risk budget, early stop) | `diff_surrogate/decision.py` | `tests/test_decision.py` | Internal | Verified |
 
 > **Note (10-seed benchmark, 2026-05-30):** The full 10-seed benchmark (80 train / 20 test / 100 epochs) shows **GeoFNO** achieving the lowest L2 error on both cylinder (0.397±0.103) and heat_exchanger (0.402±0.110) problems, closely followed by FNO. SDFTrunk is significantly worse on both problems (p=0.014), not better as the preliminary 2-seed run suggested — the earlier advantage was a small-sample artifact. CrossAttnSurrogate is newly added and not yet in the benchmark JSON.
 
@@ -702,14 +730,152 @@ pipeline = GenerativePipeline(
 top_designs = pipeline.generate()  # top-k candidates by score
 ```
 
+### Codomain-Attention Transfer Backbone (S9.1)
+
+Variable-field neural operator backbone with masked reconstruction pretraining. Supports adding and removing physics fields for cross-domain transfer between problems with different input/output channel counts.
+
+```python
+from diff_surrogate.codomain import (
+    CodomainBackbone,
+    AdapterHead,
+    CodomainPretrainer,
+    CodomainTransferBenchmark,
+)
+
+# Backbone accepts variable field counts
+backbone = CodomainBackbone(
+    d_model=64,
+    n_heads=4,
+    n_layers=4,
+    grid_size=32,
+)
+
+# Adapter heads for source and target domains (different field counts)
+source_head = AdapterHead(in_fields=3, out_fields=3, d_model=64)
+target_head = AdapterHead(in_fields=2, out_fields=4, d_model=64)
+
+# Masked reconstruction pretraining on source domain
+pretrainer = CodomainPretrainer(
+    backbone=backbone,
+    head=source_head,
+    mask_ratio=0.3,
+    n_epochs=100,
+)
+pretrainer.train(source_dataloader)
+
+# Transfer to target domain (different field count)
+transfer_bench = CodomainTransferBenchmark(
+    backbone=backbone,
+    source_head=source_head,
+    target_head=target_head,
+    n_shot=20,
+)
+results = transfer_bench.run(target_dataloader)
+# results = {"transfer_loss": ..., "from_scratch_loss": ..., "improvement_pct": ...}
+```
+
+### Probabilistic Neural Operator (S9.2)
+
+Probabilistic surrogate with proper scoring rule training (energy score, CRPS). Dual uncertainty quantification: intrinsic PNO uncertainty plus conformal prediction wrappers.
+
+```python
+from diff_surrogate.probabilistic import (
+    ProbabilisticSurrogate,
+    EnergyScoreLoss,
+    CRPSLoss,
+    PNOConformalPipeline,
+    PNOBenchmark,
+)
+
+# Probabilistic surrogate predicts mean + variance
+surrogate = ProbabilisticSurrogate(
+    in_channels=3,
+    out_channels=2,
+    grid_size=64,
+    n_layers=4,
+    d_model=64,
+)
+
+# Train with proper scoring rule
+optimizer = torch.optim.Adam(surrogate.parameters(), lr=1e-3)
+for batch in dataloader:
+    x, y = batch
+    y_mean, y_std = surrogate.predict(x)
+    loss = EnergyScoreLoss()(y_mean, y_std, y)
+    loss.backward()
+    optimizer.step()
+
+# Dual UQ: PNO uncertainty + conformal calibration
+pipeline = PNOConformalPipeline(
+    surrogate=surrogate,
+    coverage=0.95,
+)
+pipeline.calibrate(x_cal, y_cal)
+y_mean, y_lower, y_upper = pipeline.predict(x_test)
+
+# Benchmark probabilistic vs deterministic
+bench = PNOBenchmark(
+    probabilistic_factory=lambda: ProbabilisticSurrogate(in_channels=3, out_channels=2, grid_size=64),
+    deterministic_factory=lambda: CNNSurrogate(in_channels=3, out_channels=2, grid_size=64),
+)
+results = bench.run(test_dataloader)
+```
+
+### Decision-Gate UQ (S9.3)
+
+Turn calibrated uncertainty into actionable decisions: accept/reject predictions, allocate risk budgets, trigger early stopping based on coverage, and select among multiple candidate designs.
+
+```python
+from diff_surrogate.decision import (
+    DecisionGate,
+    AcceptRejectGate,
+    CVaRRiskBudget,
+    CoverageTriggeredEarlyStop,
+    MultiCandidateDecision,
+)
+
+# Accept predictions only when uncertainty is below threshold
+gate = AcceptRejectGate(
+    uncertainty_threshold=0.05,
+    fallback_value=0.0,
+)
+accepted, mask = gate(predictions, uncertainties)
+# mask[i] = True where uncertainty[i] < threshold
+
+# CVaR risk budget allocation across design candidates
+risk_budget = CVaRRiskBudget(
+    alpha=0.05,       # tail probability
+    total_budget=100,
+)
+allocations = risk_budget.allocate(candidate_losses)
+
+# Early stop when conformal coverage degrades
+early_stop = CoverageTriggeredEarlyStop(
+    target_coverage=0.95,
+    patience=5,
+)
+action = early_stop.update(current_coverage=0.93, step=epoch)
+
+# Multi-candidate selection with uncertainty-aware scoring
+selector = MultiCandidateDecision(
+    n_candidates=10,
+    uncertainty_weight=0.5,
+)
+best_idx, scores = selector.select(candidate_predictions, candidate_uncertainties)
+```
+
+DecisionGate components are consumed by DiffNano N9.3 (nanofabrication accept/reject), OpenLithoHub O9.3 (lithography pass/fail), and DiffCFD C8.4 (CFD solution quality gating).
+
 ## Competitive Positioning
 
 **What it is:** A unified differentiable surrogate framework shared by DiffCFD, DiffNano, and OpenLithoHub — the cross-domain reusable backbone of a multi-physics co-design toolkit.
 
 **Where it leads:**
 - **Cross-domain reusability:** The only surrogate library serving lithography, electromagnetics, CFD, and co-design from one codebase. Most alternatives (FNO, DeepONet, GAOT) target single domains.
-- **Calibrated uncertainty:** Split conformal prediction + risk-controlling quantiles give distribution-free coverage guarantees — rare in physics surrogate libraries.
+- **Calibrated uncertainty:** Split conformal prediction + risk-controlling quantiles give distribution-free coverage guarantees — rare in physics surrogate libraries. Dual UQ (PNO + conformal) in S9.2 adds proper scoring rule training on top.
 - **Structure-preserving operators:** Conservation-law-preserving projections and flux-conserving solvers prevent unphysical drift on out-of-distribution geometries.
+- **Variable-field transfer:** Codomain-attention backbone (S9.1) enables cross-domain transfer between problems with different physics field counts — uncommon in neural operator libraries.
+- **Decision-ready UQ:** Decision-gate components (S9.3) turn calibrated uncertainty into accept/reject, risk budget, and early stop decisions, consumed by three downstream projects.
 
 **Where it lags (honest assessment):**
 - **Scale:** Toy-to-medium problem sizes, single GPU/CPU. Not comparable to foundation-model-scale operators (GAOT/NeurIPS25, Poseidon) trained on industrial 3D datasets.
@@ -730,6 +896,8 @@ top_designs = pipeline.generate()  # top-k candidates by score
 | DNOT | Eng. with Computers 42:60, 2026 | Feature-diffusion enhanced neural operator transformer | Feature-diffusion mechanism for improved neural operator accuracy |
 | DD-DeepONet | Eng. Appl. Artif. Intell. 2026 | Domain decomposition DeepONet | Domain decomposition strategy for scalable DeepONet inference |
 | Schwarz Neural Inference | arXiv:2504.00510 v2, 2026-02 | Local→global domain decomposition operator learning | Schwarz-type alternating decomposition for neural operator training on complex domains |
+| CoDA-NO | NeurIPS 2024, arXiv:2403.12553 | Codomain-attention neural operator for variable-field transfer | CodomainBackbone (S9.1) follows codomain-attention design for cross-field transfer |
+| Probabilistic Neural Operator | arXiv:2502.12902 | Probabilistic training with proper scoring rules | ProbabilisticSurrogate (S9.2) uses energy score and CRPS losses from this work |
 
 ## License
 
