@@ -168,10 +168,7 @@ def coverage_score(
     emp_cov = covered.float().mean().item()
 
     bandwidth = (upper - lower).abs()
-    if bandwidth.ndim > 1:
-        mean_bw = bandwidth.sum(dim=-1).mean().item()
-    else:
-        mean_bw = bandwidth.mean().item()
+    mean_bw = bandwidth.sum(dim=-1).mean().item() if bandwidth.ndim > 1 else bandwidth.mean().item()
 
     if mean_bw > 0:
         targets_range = (targets.max() - targets.min()).abs().item()

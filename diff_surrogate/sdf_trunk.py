@@ -34,7 +34,10 @@ class _TrunkNet(nn.Module):
         n_layers: Number of hidden layers.
     """
 
-    def __init__(self, sdf_dim: int = 1, hidden_dim: int = 128, n_basis: int = 64, n_layers: int = 4):
+    def __init__(
+        self, sdf_dim: int = 1, hidden_dim: int = 128,
+        n_basis: int = 64, n_layers: int = 4,
+    ):
         super().__init__()
         layers = [nn.Linear(sdf_dim, hidden_dim), nn.GELU()]
         for _ in range(n_layers - 1):
@@ -185,12 +188,11 @@ class SDFTrunkSurrogate(SurrogateBase):
         output = (basis * coeffs.unsqueeze(1).unsqueeze(1)).sum(dim=-1)
 
         # Reshape to (B, n_outputs, H, W) or (B, n_outputs, N)
-        if sdf_field.ndim >= 3:
-            # (B, H, W, n_outputs) -> (B, n_outputs, H, W)
-            output = output.permute(0, -1, 1, 2)
-        else:
-            # (B, N, n_outputs) -> (B, n_outputs, N)
-            output = output.permute(0, 2, 1)
+        output = (
+            output.permute(0, -1, 1, 2)
+            if sdf_field.ndim >= 3
+            else output.permute(0, 2, 1)
+        )
 
         return output
 

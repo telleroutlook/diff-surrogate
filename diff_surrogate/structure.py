@@ -313,7 +313,7 @@ class FluxConservingLinear(nn.Module):
             x = x.unsqueeze(0)
             squeeze = True
 
-        B, N, _ = x.shape
+        _B, N, _ = x.shape
         y = self.linear(x)
 
         if node_volumes is None:
@@ -366,10 +366,7 @@ class ConservationLoss(nn.Module):
         """
         if field.ndim == 4:
             d1, d2, d3 = field.shape[1], field.shape[2], field.shape[3]
-            if d1 <= 4 and d1 < d2 and d1 < d3:
-                field_hwc = field.permute(0, 2, 3, 1)
-            else:
-                field_hwc = field
+            field_hwc = field.permute(0, 2, 3, 1) if d1 <= 4 and d1 < d2 and d1 < d3 else field
             div = discrete_divergence(field_hwc, grid_spacing=grid_spacing)
             return (div ** 2).mean()
         elif field.ndim == 3:

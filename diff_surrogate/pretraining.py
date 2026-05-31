@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # Toy PDE task generators
 # ---------------------------------------------------------------------------
@@ -74,7 +73,7 @@ def task_diffusion_2d(
     # Random low-frequency initial condition
     ic = torch.randn(n_samples, n_grid, n_grid)
     ic_f = torch.fft.fft2(ic)
-    low_pass = (K2 < (n_grid // 4) ** 2).float()
+    low_pass = ((n_grid // 4) ** 2 > K2).float()
     ic_f = ic_f * low_pass.unsqueeze(0)
     ic = torch.fft.ifft2(ic_f).real
 
@@ -234,7 +233,8 @@ class MultiTaskPretrainer:
 
         # Infer hidden_dim from the encoder
         with torch.no_grad():
-            dummy = torch.zeros(1, self.shared_encoder.input_dim if hasattr(self.shared_encoder, 'input_dim') else 64)
+            in_dim = getattr(self.shared_encoder, "input_dim", 64)
+            dummy = torch.zeros(1, in_dim)
             dummy = dummy.to(self.device)
             hidden = self.shared_encoder.encode(dummy)
             hidden_dim = hidden.shape[-1]
@@ -279,7 +279,7 @@ class MultiTaskPretrainer:
         loss_fn = nn.MSELoss()
 
         history: list[float] = []
-        for epoch in range(n_epochs):
+        for _epoch in range(n_epochs):
             total_loss = 0.0
             n_batches = 0
             for task_idx in range(self.n_tasks):
@@ -343,7 +343,8 @@ class FewShotFinetuner:
 
         # Infer hidden dim
         with torch.no_grad():
-            dummy = torch.zeros(1, self.encoder.input_dim if hasattr(self.encoder, 'input_dim') else 64)
+            in_dim = getattr(self.encoder, "input_dim", 64)
+            dummy = torch.zeros(1, in_dim)
             dummy = dummy.to(self.device)
             hidden = self.encoder.encode(dummy)
             hidden_dim = hidden.shape[-1]
@@ -476,7 +477,8 @@ class TransferBenchmark:
                 fs_targets = target_targets[perm]
 
                 # Pretrained finetune
-                ft = FewShotFinetuner(base_encoder, output_dim=target_targets.shape[-1], device="cpu")
+                out_dim = target_targets.shape[-1]
+                ft = FewShotFinetuner(base_encoder, output_dim=out_dim, device="cpu")
                 ft.finetune(fs_inputs, fs_targets, n_epochs=finetune_epochs, lr=lr)
                 with torch.no_grad():
                     pred = ft.predict(target_inputs)
@@ -484,7 +486,10 @@ class TransferBenchmark:
                 pretrained_results[size].append(pretrain_loss)
 
                 # Scratch train
-                scratch_ft = FewShotFinetuner(scratch_encoder, output_dim=target_targets.shape[-1], device="cpu")
+                out_dim = target_targets.shape[-1]
+                scratch_ft = FewShotFinetuner(
+                    scratch_encoder, output_dim=out_dim, device="cpu"
+                )
                 scratch_ft.finetune(fs_inputs, fs_targets, n_epochs=finetune_epochs, lr=lr)
                 with torch.no_grad():
                     pred_s = scratch_ft.predict(target_inputs)

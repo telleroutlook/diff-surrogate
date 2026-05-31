@@ -14,7 +14,6 @@ from diff_surrogate.pretraining import (
     task_reaction_diffusion_1d,
 )
 
-
 # ---- helpers ----
 
 def _encoder_factory():

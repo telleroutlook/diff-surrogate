@@ -14,7 +14,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # Protocols
 # ---------------------------------------------------------------------------
@@ -148,7 +147,7 @@ class VAESampler(nn.Module):
         if condition.dim() == 1:
             condition = condition.unsqueeze(0)
 
-        batch = condition.shape[0]
+        condition.shape[0]
         # Expand condition for multiple candidates
         cond_expanded = condition.repeat_interleave(n_candidates, dim=0)  # (batch*n, cond_dim)
         mu, logvar = self.encode(cond_expanded)
@@ -272,7 +271,7 @@ class CompositeScorer:
     def score(self, candidate: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
         """Weighted sum of individual scores."""
         total = torch.tensor(0.0, device=candidate.device)
-        for w, s in zip(self.weights, self.scorers):
+        for w, s in zip(self.weights, self.scorers, strict=False):
             total = total + w * s.score(candidate, condition)
         return total
 

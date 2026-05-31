@@ -43,13 +43,14 @@ def test_split_conformal_scalar_coverage():
 
     w_true = torch.randn(1)
     train_x = torch.randn(n_train, 1)
-    train_y = train_x @ w_true + 0.5 * torch.randn(n_train)
+    train_x @ w_true + 0.5 * torch.randn(n_train)
     cal_x = torch.randn(n_cal, 1)
     cal_y = cal_x @ w_true + 0.5 * torch.randn(n_cal)
     test_x = torch.randn(n_test, 1)
     test_y = test_x @ w_true + 0.5 * torch.randn(n_test)
 
-    pred_fn = lambda x: x @ w_true
+    def pred_fn(x):
+        return x @ w_true
 
     alpha = 0.1
     cp = SplitConformalPredictor()
@@ -156,7 +157,8 @@ def test_calibrated_bandwidth_better_than_raw_ensemble():
 
     naive_lower = mean_pred - 2.0 * std_pred
     naive_upper = mean_pred + 2.0 * std_pred
-    naive_coverage = ((eval_targets >= naive_lower) & (eval_targets <= naive_upper)).float().mean().item()
+    in_range = (eval_targets >= naive_lower) & (eval_targets <= naive_upper)
+    naive_coverage = in_range.float().mean().item()
 
     cp = sampler._conformal_predictor
     conformal_metrics = cp.coverage_score(mean_pred, eval_targets)
@@ -173,7 +175,7 @@ def test_ood_coverage_diagnostic():
     torch.manual_seed(4)
     n_cal = 300
 
-    w = torch.tensor([2.0])
+    torch.tensor([2.0])
     cal_pred = torch.randn(n_cal) * 2.0
     cal_targets = cal_pred * 2.0 + 0.5 * torch.randn(n_cal)
 
@@ -199,7 +201,7 @@ def test_ood_coverage_diagnostic():
 def test_ensemble_integration():
     """SplitConformalPredictor should work end-to-end with EnsembleSurrogate."""
     torch.manual_seed(5)
-    bounds = torch.tensor([[-2.0, 2.0]])
+    torch.tensor([[-2.0, 2.0]])
     ensemble = _make_ensemble(n_members=7)
 
     train_x = torch.linspace(-2.0, 1.0, 60).unsqueeze(-1)

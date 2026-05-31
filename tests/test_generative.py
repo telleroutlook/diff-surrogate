@@ -8,10 +8,8 @@ from diff_surrogate.generative import (
     CompositeScorer,
     EnergyBasedSampler,
     GenerativePipeline,
-    SurrogateScorer,
     VAESampler,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

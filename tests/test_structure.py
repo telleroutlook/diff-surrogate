@@ -15,7 +15,6 @@ from diff_surrogate.structure import (
     discrete_gradient,
 )
 
-
 # ---------------------------------------------------------------------------
 # Discrete differential operator tests
 # ---------------------------------------------------------------------------
@@ -120,7 +119,8 @@ def test_projection_reduces_divergence_iterative():
     div_after = loss_fn(corrected).item()
 
     assert div_after < div_before * 0.5, (
-        f"Iterative projection should reduce divergence: before={div_before:.6f}, after={div_after:.6f}"
+        f"Iterative projection should reduce divergence: "
+        f"before={div_before:.6f}, after={div_after:.6f}"
     )
 
 
@@ -182,7 +182,8 @@ def test_flux_conserving_linear_with_volumes():
     output_flux = (y * w).sum(dim=1).sum(dim=-1)
 
     assert torch.allclose(input_flux, output_flux, atol=1e-4), (
-        f"Volume-weighted flux not preserved: input={input_flux.tolist()}, output={output_flux.tolist()}"
+        f"Volume-weighted flux not preserved: "
+        f"input={input_flux.tolist()}, output={output_flux.tolist()}"
     )
 
 
