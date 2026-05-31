@@ -57,3 +57,21 @@ jobs:
         run: pip install "openlithohub @ git+https://github.com/OpenLithoHub/OpenLithoHub.git"
       - name: Run cross-repo compatibility tests
         run: pytest tests/test_cross_repo_compat.py -v
+
+  license-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install scancode-toolkit
+        run: pip install scancode-toolkit
+      - name: Scan for copyleft licenses
+        run: |
+          scancode --license --copyright --only-findings --strip-root diff_surrogate/ > scancode-report.txt 2>&1 || true
+          echo "--- Scan results ---"
+          cat scancode-report.txt
+          # Fail if any GPL/AGPL detected
+          if grep -qiE '(GPL|AGPL|copyleft)' scancode-report.txt; then
+            echo "::error::Copyleft license detected in source code"
+            exit 1
+          fi
+          echo "No copyleft licenses found."
