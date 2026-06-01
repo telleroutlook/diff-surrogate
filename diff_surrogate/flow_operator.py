@@ -810,7 +810,8 @@ class FlowOperator(nn.Module):
             v = self.flow_net(x, t, condition)
 
             if guidance_fn is not None and guidance_scale > 0:
-                g = guidance_fn(x, t)
+                with torch.enable_grad():
+                    g = guidance_fn(x, t)
                 v = v + guidance_scale * g
 
             x = x + dt * v
@@ -865,7 +866,8 @@ class FlowOperator(nn.Module):
             v = self.flow_net(x, t, cond_expanded)
 
             if guidance_fn is not None and guidance_scale > 0:
-                g = guidance_fn(x, t)
+                with torch.enable_grad():
+                    g = guidance_fn(x, t)
                 v = v + guidance_scale * g
 
             x = x + dt * v
